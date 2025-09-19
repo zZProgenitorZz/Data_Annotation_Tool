@@ -16,7 +16,7 @@
 
 # activating the virtual environment
 
-2. .\fapivenv/Script\activate
+2. .\venv\Script\Activate
 
 # installing fastapi with every dependency
 
@@ -26,13 +26,13 @@
 
 # creating the requirement.txt of already installed dependency
 
-4. pip freeze > requirement.txt
+4. pip freeze > requirements.txt
 
 <!-- installing the dependency in requirement.txt (when placing new dependency  in requirement.txt -->
 
 # installing the dependency in requirement.txt (when placing new dependency in requirement.txt)
 
-5. pip install -r requirement.txt
+5. pip install -r requirements.txt
 
 <!-- creating a react template in the frontend map -->
 

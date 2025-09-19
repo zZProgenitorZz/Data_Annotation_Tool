@@ -1,18 +1,28 @@
-from pydantic import BaseModel
-from datetime import datetime
+from pydantic import BaseModel, Field
+from typing import Optional, Dict
+from backend.src.helpers.objectid_helper import PyObjectId
+from datetime import datetime, timezone
 
 
 class Log(BaseModel):
-    id: int
-    userId: int
-    action: str
-    timestamp: datetime
-    details: str
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    user_id: Optional[PyObjectId] = None           # wie heeft dit gedaan
+    action: str                        # bv. upload_dataset, annotate_session, delete_request
+    target: Optional[str] = None       # bv. dataset_id of image_id
+    details: Optional[Dict] = None     # extra info zoals {"images_annotated": 25}
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {PyObjectId: str}
 
 
 class LogDto(BaseModel):
-    id: int
-    userId: int
+    id: Optional[str] = None
+    userId: Optional[str] = None
     action: str
-    timestamp: datetime
-    details: str
+    target: Optional[str] = None
+    details: Optional[Dict] = None     # extra info zoals {"images_annotated": 25}
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
