@@ -13,6 +13,9 @@ class ImageService:
         self.image_repo = ImageMetadataRepo()
         self.base_path = base_path   # bv.  'C:/images/'
 
+
+    
+#-----------------------------------------------------------------------------------------------------------------------
     async def add_image(self, file_name: str, dataset_id: Optional[str] = None, uploaded_by: Optional[str] = None) -> ImageMetadata:
         #Whole path of the image
         full_path = os.path.join(self.base_path, file_name)
@@ -110,4 +113,4 @@ class ImageService:
                 count += 1
         return count
 
-        
+    

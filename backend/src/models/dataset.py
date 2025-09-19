@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 from backend.src.helpers.objectid_helper import PyObjectId
 from datetime import datetime
 
@@ -9,10 +9,10 @@ class Dataset(BaseModel):
     description: Optional[str] = None
     createdBy: PyObjectId
     status: str
-    total_Images: int
-    completed_Images: int
+    total_Images: int = 0
+    completed_Images: int = 0
     locked : bool
-    lockedBy: Optional[PyObjectId] = None
+    assignedTo: List[PyObjectId] = Field(default_factory=list)
     createdAt: Optional[datetime] = None
     updatedAt: Optional[datetime] = None
     is_active: bool
@@ -29,10 +29,10 @@ class DatasetDto(BaseModel):
     description: str
     createdBy: str
     status: str
-    total_Images: int
-    completed_Images: int
+    total_Images: int = 0
+    completed_Images: int = 0
     locked : bool
-    lockedBy: Optional[str]
+    assignedTo: List[str] = Field(default_factory=list)
     createdAt: datetime
     updatedAt: datetime
     is_active: bool
@@ -44,10 +44,10 @@ class DatasetUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     status: Optional[str] = None
-    total_Images: Optional[int] = None
-    completed_Images: Optional[int] = None
+    total_Images: int = 0
+    completed_Images: int = 0
     locked : Optional[bool] = None
-    lockedBy: Optional[str] = None
+    assignedTo: List[str] = Field(default_factory=list)
     createdAt: Optional[datetime] = None
     updatedAt: Optional[datetime] = None
 

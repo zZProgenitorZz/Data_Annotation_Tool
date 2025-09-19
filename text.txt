@@ -1,0 +1,27 @@
+
+wat wordt logged
+
+create datasets: met aantal images
+create datesets: met assigned persoon
+
+delete dataset: soft deleted (who requested)
+delete dataset: hard deleted
+restore dataset: restored
+
+update dataset: assigned to wijzigen
+update dataset: naam wijzigen
+update dataset: status complete
+update dataset: assignment update
+
+new user created
+new role created
+user deleted
+role deleted
+role updated
+
+User heeft feedback gevraagt over image aan Reviewer
+Reviewer heeft feedback gegeven over image aan User
+
+
+
+
