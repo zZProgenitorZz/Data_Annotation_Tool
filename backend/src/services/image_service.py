@@ -16,6 +16,13 @@ class ImageService:
 
     
 #-----------------------------------------------------------------------------------------------------------------------
+
+    async def get_images_by_dataset(self, dataset_id: str):
+        images = await self.image_repo.get_image_by_dataset_id(dataset_id)
+        if not images:
+            raise ValueError(f"Images with dataset ID: {dataset_id} not found")
+        return images
+
     async def add_image(self, file_name: str, dataset_id: Optional[str] = None, uploaded_by: Optional[str] = None) -> ImageMetadata:
         #Whole path of the image
         full_path = os.path.join(self.base_path, file_name)

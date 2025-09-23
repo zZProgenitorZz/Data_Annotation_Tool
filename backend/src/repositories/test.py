@@ -20,18 +20,37 @@ label = LabelRepo()
 
 async def test_create_dataset():
     new_Dataset = Dataset(
-        name= "dataset284",
+        name= "dataset666",
         description= "It has parasites",
         createdBy = "68c80cd36842b3ca17e13d50",
         status = "New",
-        total_Images= 333,
+        total_Images= 0,
         completed_Images= 0,
         locked = False,
+        assignedTo= ["68c80cd36842b3ca17e13d50"],
         is_active = True
+        
+
     )
 
     created = await dataset.create_dataset(new_Dataset)
     print(created)
+
+
+async def test_delete_dataset():
+    dataset_id = "68cbce3fa73e659f7f62963d"
+    delete = await dataset.delete_dataset(dataset_id)
+    if delete:
+        print("The dataset is deleted")
+    else:
+        print("Failed to delete the dataset")
+
+
+
+    
+asyncio.run(test_create_dataset())
+#asyncio.run(test_create_label())
+#asyncio.run(test_delete_dataset())
 
 async def test_create_label():
     new_label = Label(
@@ -41,9 +60,6 @@ async def test_create_label():
         )
     created = await label.create_label(new_label)
     print(created)
-
-#asyncio.run(test_create())
-#asyncio.run(test_create_label())
 
 
 async def test_detele_label():
