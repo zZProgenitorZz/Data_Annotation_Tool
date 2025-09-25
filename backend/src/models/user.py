@@ -9,7 +9,8 @@ class User(BaseModel):
     username: str
     password: str
     email: EmailStr
-    is_active: bool
+    disabled: bool
+    role: str
 
     class Config:
         populate_by_name = True
@@ -21,7 +22,8 @@ class UserDto(BaseModel):
     username: str
     email: EmailStr
     role: Optional[str] = None # Only include role name in DTO
-    is_active: bool
+    disabled: bool
+    role: str
 
 class UserUpdate(BaseModel):
     id : Optional[str] = None
@@ -29,4 +31,13 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
     email: Optional[EmailStr] = None
     roleId: Optional[PyObjectId] = None
-    is_active: Optional[bool] = None
+    disabled: Optional[bool] = None
+    role: Optional[str] = None
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class TokenData(BaseModel):
+    username: str | None = None

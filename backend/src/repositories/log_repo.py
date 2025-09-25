@@ -39,4 +39,5 @@ class LogRepository:
         result = await self.collection.delete_one({"_id" : PyObjectId(log_id)})
         return result.deleted_count > 0
         
+    
 
