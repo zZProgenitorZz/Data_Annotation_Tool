@@ -1,13 +1,10 @@
 from pydantic import BaseModel, Field, EmailStr
 from typing import Optional
 from backend.src.helpers.objectid_helper import PyObjectId
-from backend.src.models.role import RoleDto
 
-class User(BaseModel):
+class UserDto(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
-    roleId: Optional[PyObjectId] = None
     username: str
-    password: str
     email: EmailStr
     disabled: bool
     role: str
@@ -17,20 +14,14 @@ class User(BaseModel):
         arbitrary_types_allowed = True
         json_encoders = {PyObjectId: str}
 
-class UserDto(BaseModel):
-    id: Optional[str] = None
-    username: str
-    email: EmailStr
-    role: Optional[str] = None # Only include role name in DTO
-    disabled: bool
-    role: str
+class User(UserDto):
+    hashed_password: str
 
 class UserUpdate(BaseModel):
     id : Optional[str] = None
     username: Optional[str] = None
     password: Optional[str] = None
     email: Optional[EmailStr] = None
-    roleId: Optional[PyObjectId] = None
     disabled: Optional[bool] = None
     role: Optional[str] = None
 
@@ -40,4 +31,4 @@ class Token(BaseModel):
 
 
 class TokenData(BaseModel):
-    username: str | None = None
+    user_id: str | None = None

@@ -1,6 +1,5 @@
 import asyncio
-from backend.src.repositories.role_repo import RoleRepo
-from backend.src.models.role import Role, RoleDto, RoleUpdate
+
 from backend.src.helpers import PyObjectId
 from backend.src.models.user import User, UserDto, UserUpdate
 from backend.src.repositories.user_repo import UserRepo
@@ -74,70 +73,6 @@ async def test_detele_label():
 
 
 #--------------------------------------------------------------------------------------------------------------------------
-# ROLES TESTS
-role_repo = RoleRepo()
-
-# Test functio get_role_by_id
-async def test_get_role():
-    # Vul hier een bestaand ObjectId in je MongoDB
-    test_id = "68c3e04ce119e0f462375e46"
-    role = await role_repo.get_role_by_id(test_id)
-    
-    if role:
-        print("Role found:")
-        print(role.model_dump_json())
-    else:
-        print("No role found with the given ID.")
-
-# Test function get_all_roles
-async def test_get_all_roles():
-    roles = await role_repo.get_all_roles()
-
-    print(f"Get total roles: {len(roles)}")
-    for role in roles:
-        print(f"Role ID: {role.id}")
-        print(f"Role: {role.roleName}")
-    
-# Test function create_role
-async def test_create_role():
-    new_role = Role(
-        roleName="TestRole3",
-        deletePermission=False,
-        annotationPermission=True,
-        managementPermission=False,
-        logViewPermission=False,
-        addPermission=True
-    )
-    created_role = await role_repo.create_role(new_role)
-    print("Created Role ID:")
-    print(created_role)
-
-# Test function delete_role
-async def test_delete_role(role_id: str):
-    success = await role_repo.delete_role(role_id)
-    if success:
-        print(f"Role with ID {role_id} deleted successfully.")
-    else:
-        print(f"Failed to delete role with ID {role_id}.")
-
-# Test function update_role
-async def test_update_role(role_id: str):
-    updated_role = RoleUpdate(
-        roleName="UpdatedTestRole2"
-    )
-    role_dto = await role_repo.update_role(role_id, updated_role)
-    if role_dto:
-        print("Updated Role:")
-        print(f"Role ID: {role_id} is updated")
-    else:
-        print(f"No role found with ID {role_id} to update.")
-
-# Run de test
-#asyncio.run(test_get_role())
-#asyncio.run(test_get_all_roles())
-#asyncio.run(test_create_role())
-#asyncio.run(test_delete_role("68c9189599b52df17b182590"))
-#asyncio.run(test_update_role("68c7e8c4e414bc8e6b9c44af"))
 
 #--------------------------------------------------------------------------------------------------------------------------
 # USERS TESTS

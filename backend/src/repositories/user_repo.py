@@ -17,6 +17,21 @@ class UserRepo:
         return User(
             **user
         )
+    
+    async def get_user_by_username_or_email(self, username_or_email: str) -> User | None:
+        user = await self.collection.find_one({
+            "$or": [
+                {"username": username_or_email},
+                {"email": username_or_email}
+            ]
+        })
+        if not user:
+            return None
+        return User(
+            **user
+        )
+        
+    
 
     # Get all users
     async def get_all_users(self) -> list[User]:
