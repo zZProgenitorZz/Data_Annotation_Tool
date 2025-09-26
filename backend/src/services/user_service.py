@@ -33,7 +33,19 @@ class UserService:
         return pwd_context.hash(password)
     
     async def get_user(self, user_id: str):
-        return await self.user_repo.get_user_by_id(user_id)
+        user = await self.user_repo.get_user_by_id(user_id)
+        if not user:
+            return None  
+
+        user_dto = UserDto(
+            id=str(user.id),  # ObjectId → string
+            username=user.username,
+            email=user.email,
+            hashed_password=user.hashed_password,
+            role=user.role,
+            disabled=user.disabled
+        )
+        return user_dto
         
     
     async def authenticate_user(self ,username_or_email: str, password: str):
@@ -80,6 +92,24 @@ class UserService:
         if current_user.disabled:
             raise HTTPException(status_code=400, detail="Inactive user")
         return current_user
+    
+    async def get_all_users(self):
+        users = await self.user_repo.get_all_users()
+        users_dto = []
+        for user in users:
+            users_dto.append(
+                UserDto(
+                    id = str(user.id),
+                    username= user.username,
+                    email= user.email,
+                    hashed_password=user.hashed_password,
+                    role= user.role,
+                    disabled= user.disabled
+                )
+            )
+        return users_dto
+
+
 
 
         

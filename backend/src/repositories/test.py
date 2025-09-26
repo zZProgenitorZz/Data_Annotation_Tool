@@ -47,7 +47,7 @@ async def test_delete_dataset():
 
 
     
-asyncio.run(test_create_dataset())
+#asyncio.run(test_create_dataset())
 #asyncio.run(test_create_label())
 #asyncio.run(test_delete_dataset())
 
@@ -80,15 +80,16 @@ user = UserRepo()
 # Test function create_user
 async def test_create_user():
     new_user = User(
-        username="testuser2",
-        password="testpassword2",
-        email="testemail2@email.com",
-        roleId=PyObjectId("68c80723887353f6b648a301"), # Replace with a valid Role ObjectId
-        is_active=False
+        username="John",
+        hashed_password="example_password2",
+        email="JohnDoe@email.com",
+        role="annotator", 
+        disabled = False,
+
     )
     created_user = await user.create_user(new_user)
     print("Created User:")
-    print(created_user.model_dump_json())
+    print(created_user)
 
 # Test function get_user_by_id
 async def test_get_user():
@@ -130,7 +131,7 @@ async def test_update_user(user_id: str):
         print(f"No user found with ID {user_id} to update.")
 
 # Run de test
-#asyncio.run(test_create_user())
+asyncio.run(test_create_user())
 #asyncio.run(test_get_user())
 #asyncio.run(test_get_all_users())
 #asyncio.run(test_delete_user("68c8098be6930d4ea97eeaa9"))

@@ -3,19 +3,25 @@ from typing import Optional
 from backend.src.helpers.objectid_helper import PyObjectId
 
 class UserDto(BaseModel):
+    id: Optional[str] = None
+    username: str
+    email: EmailStr
+    disabled: bool
+    role: str
+    hashed_password: Optional[str] = None
+
+class User(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
     username: str
     email: EmailStr
     disabled: bool
     role: str
+    hashed_password: str
 
     class Config:
         populate_by_name = True
         arbitrary_types_allowed = True
         json_encoders = {PyObjectId: str}
-
-class User(UserDto):
-    hashed_password: str
 
 class UserUpdate(BaseModel):
     id : Optional[str] = None

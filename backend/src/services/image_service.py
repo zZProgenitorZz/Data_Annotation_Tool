@@ -1,6 +1,6 @@
 import os
 from backend.src.repositories.Image_metadata_repo import ImageMetadataRepo
-from typing import Optional
+from typing import Optional, List
 from PIL import Image
 from datetime import datetime
 from backend.src.models.imageMetadata import ImageMetadata, ImageMetadataDto, ImageMetadataUpdate
@@ -17,11 +17,28 @@ class ImageService:
     
 #-----------------------------------------------------------------------------------------------------------------------
 
-    async def get_images_by_dataset(self, dataset_id: str):
+    async def get_images_by_dataset(self, dataset_id: str) -> List[ImageMetadataDto]:
         images = await self.image_repo.get_image_by_dataset_id(dataset_id)
         if not images:
             raise ValueError(f"Images with dataset ID: {dataset_id} not found")
-        return images
+
+        images_dto = [
+            ImageMetadataDto(
+                id=str(image.id) if image.id else None,
+                datasetId=str(image.datasetId) if image.datasetId else None,
+                fileName=image.fileName,
+                folderPath=image.folderPath,
+                width=image.width,
+                height=image.height,
+                fileType=image.fileType,
+                UploadedBy=str(image.UploadedBy) if image.UploadedBy else None,
+                uploadedAt=image.uploadedAt,
+                is_active=image.is_active
+            )
+            for image in images
+        ]
+
+        return images_dto
 
     async def add_image(self, file_name: str, dataset_id: Optional[str] = None, uploaded_by: Optional[str] = None) -> ImageMetadata:
         #Whole path of the image

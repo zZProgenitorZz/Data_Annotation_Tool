@@ -16,6 +16,7 @@ class Label(BaseModel):
 
 class LabelDto(BaseModel):
     id: Optional[str] = None
+    datasetId: Optional[str] = None
     labelName: str
     labelDescription: Optional[str] = None  
 
