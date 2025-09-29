@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, status, HTTPException
 from backend.src.services.user_service import UserService, ACCESS_TOKEN_EXPIRE_MINUTES
 from fastapi.security import OAuth2PasswordRequestForm
 from typing import Annotated
-from backend.src.models.user import Token, User
+from backend.src.models.user import Token, User, UserDto
 from datetime import timedelta
+
 
 router = APIRouter()
 
@@ -22,13 +23,13 @@ async def login_for_access_token(
         )
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = user_service.create_access_token(
-        data={"sub": user.username, "role": user.role}, expires_delta=access_token_expires
+        data={"sub": user.id, "role": user.role}, expires_delta=access_token_expires
     )
     return Token(access_token=access_token, token_type="bearer")
 
 
-@router.get("/me/", response_model=User)
+@router.get("/me/", response_model=UserDto)
 async def read_users_me(
-    current_user: Annotated[User, Depends(user_service.get_current_active_user)]
+    current_user: UserDto = Depends(user_service.get_current_active_user)
 ):
     return current_user

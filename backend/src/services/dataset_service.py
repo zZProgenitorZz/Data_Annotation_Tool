@@ -2,7 +2,7 @@ from backend.src.models.dataset import Dataset, DatasetUpdate, DatasetDto
 from backend.src.repositories.dataset_repo import DatasetRepo
 from datetime import datetime
 from backend.src.repositories.user_repo import UserRepo
-from backend.src.models.user import User
+from backend.src.models.user import User, UserDto
 from backend.src.services.log_service import LogService
 from backend.src.services.image_service import ImageService, ImageMetadataRepo
 from typing import Optional
@@ -141,7 +141,7 @@ class DatasetService:
 
 
    # Update a dataset
-    async def update_dataset(self, dataset_id: str, dataset_update: DatasetUpdate, current_user: User) -> bool:
+    async def update_dataset(self, dataset_id: str, dataset_update: DatasetUpdate, current_user: UserDto) -> bool:
         # Haal huidige dataset op
         dataset = await self.dataset_repo.get_dataset_by_id(dataset_id)
         if not dataset:
@@ -207,7 +207,7 @@ class DatasetService:
 #------------------------------------------------------------------------------------------------------
   
   # soft delete dataset
-    async def softdelete_dataset(self, dataset_id: str, current_user: User) -> bool:
+    async def softdelete_dataset(self, dataset_id: str, current_user: UserDto) -> bool:
         softdelete = DatasetUpdate(
             is_active= False
         )
@@ -227,7 +227,7 @@ class DatasetService:
         return await self.dataset_repo.update_dataset(dataset_id, softdelete)
     
     # restore dataset
-    async def restore_dataset(self, dataset_id: str, current_user: User) -> bool:
+    async def restore_dataset(self, dataset_id: str, current_user: UserDto) -> bool:
         softdelete = DatasetUpdate(
             is_active= True
         )
@@ -249,7 +249,7 @@ class DatasetService:
         return self.dataset_repo.update_dataset(dataset_id, softdelete)
     
     # hard delete dataset
-    async def harddelete_dataset(self, dataset_id: str, current_user: User) -> bool:
+    async def harddelete_dataset(self, dataset_id: str, current_user: UserDto) -> bool:
         deleted = await self.dataset_repo.delete_dataset(dataset_id)
         if not deleted:
             raise ValueError(f"Failed to delete dataset with id {dataset_id}")
@@ -274,3 +274,5 @@ class DatasetService:
     async def recalculate_status(self, dataset_id):
 
         return True
+    
+

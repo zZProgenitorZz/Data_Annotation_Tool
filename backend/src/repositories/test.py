@@ -75,15 +75,18 @@ async def test_detele_label():
 #--------------------------------------------------------------------------------------------------------------------------
 
 #--------------------------------------------------------------------------------------------------------------------------
+from backend.src.services.user_service import UserService
 # USERS TESTS
+user_service = UserService()
 user = UserRepo()
 # Test function create_user
 async def test_create_user():
+    password = user_service.get_password_hash("Admin123")
     new_user = User(
-        username="John",
-        hashed_password="example_password2",
-        email="JohnDoe@email.com",
-        role="annotator", 
+        username="Admin",
+        hashed_password= password,
+        email="Admin@email.com",
+        role="admin", 
         disabled = False,
 
     )
@@ -134,7 +137,7 @@ async def test_update_user(user_id: str):
 asyncio.run(test_create_user())
 #asyncio.run(test_get_user())
 #asyncio.run(test_get_all_users())
-#asyncio.run(test_delete_user("68c8098be6930d4ea97eeaa9"))
+#asyncio.run(test_delete_user("68d66f6e75b7dd2b729f5398"))
 #asyncio.run(test_update_user("68c80cd36842b3ca17e13d50"))
 
 #--------------------------------------------------------------------------------------------------------------------------
