@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from backend.src.helpers.objectid_helper import PyObjectId
-from datetime import datetime
+from datetime import datetime, date
 
 class Dataset(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
@@ -11,11 +11,13 @@ class Dataset(BaseModel):
     status: str
     total_Images: int = 0
     completed_Images: int = 0
-    locked : bool
+    locked : bool = None
     assignedTo: List[PyObjectId] = Field(default_factory=list)
     createdAt: Optional[datetime] = None
     updatedAt: Optional[datetime] = None
-    is_active: bool
+    is_active: bool 
+    date_of_collection: Optional[date] = None
+    location_of_collection: Optional[str] = None
 
     class Config:
         populate_by_name = True
@@ -31,11 +33,13 @@ class DatasetDto(BaseModel):
     status: str
     total_Images: int = 0
     completed_Images: int = 0
-    locked : bool
+    locked : bool = None
     assignedTo: List[str] = Field(default_factory=list)
     createdAt: datetime
     updatedAt: datetime
     is_active: bool
+    date_of_collection: Optional[date] = None
+    location_of_collection: Optional[str] = None
 
     
 
@@ -52,3 +56,5 @@ class DatasetUpdate(BaseModel):
     updatedAt: Optional[datetime] = None
 
     is_active: Optional[bool] = None
+    date_of_collection: Optional[date] = None
+    location_of_collection: Optional[str] = None

@@ -1,0 +1,90 @@
+from typing import List, Literal, Union, Optional
+from pydantic import BaseModel, Field
+from backend.src.helpers.objectid_helper import PyObjectId
+from datetime import datetime
+import uuid
+
+
+
+# ---- Geometry models ----
+class BBoxGeometry(BaseModel):
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+class PolygonGeometry(BaseModel):
+    points: List[List[float]]  # [[x, y], [x, y], ...]
+
+
+class EllipseGeometry(BaseModel):
+    cx: float
+    cy: float
+    rx: float
+    ry: float
+
+
+class FreehandGeometry(BaseModel):
+    path: List[List[float]]  # [[x, y], [x, y], ...]
+
+
+class MaskGeometry(BaseModel):
+    maskPath: str  # e.g. SVG path string
+
+
+# ---- Annotation model ----
+class Annotation(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    labelId: Optional[PyObjectId] = None
+    type: Literal["bbox", "polygon", "ellipse", "freehand", "mask"]
+    geometry: Union[
+        BBoxGeometry,
+        PolygonGeometry,
+        EllipseGeometry,
+        FreehandGeometry,
+        MaskGeometry
+    ]
+
+
+# ---- Image model ----
+class ImageAnnotations(BaseModel):
+    id: Optional[PyObjectId] = Field(default=None, alias="_id")
+    imageId: Optional[PyObjectId] = None
+    annotations: List[Annotation]
+
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {PyObjectId: str}
+
+
+# ---- Annotation model Dto ----
+class AnnotationDto(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4())) 
+    labelId: Optional[PyObjectId] = None
+    type: Literal["bbox", "polygon", "ellipse", "freehand", "mask"] = None
+    geometry: Union[
+        BBoxGeometry,
+        PolygonGeometry,
+        EllipseGeometry,
+        FreehandGeometry,
+        MaskGeometry
+    ] = None
+
+
+# ---- Image model Dto----
+class ImageAnnotationsDto(BaseModel):
+    id: Optional[PyObjectId] = Field(default=None, alias="_id")
+    imageId: Optional[PyObjectId] = None
+    annotations: List[Annotation] = None
+
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {PyObjectId: str}
+
+
+
+
+
