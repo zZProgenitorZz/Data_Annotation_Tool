@@ -22,13 +22,11 @@ class LabelService:
         return labels_dto
     
     # Get a label by id
-    async def get_label_by_id(self, label_id: Label) -> LabelDto:
+    async def get_label_by_id(self, label_id: str) -> LabelDto:
         label = await self.label_repo.get_label_by_id(label_id)
         if not label:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Label with id {label_id} not found"
-            )
+            raise ValueError(f"Label with id {label_id} not found")
+        
         label_dto = self.to_dto(label)
         return label_dto
     
@@ -37,20 +35,16 @@ class LabelService:
     async def delete_label(self, label_id: str) -> bool:
         success = await self.label_repo.delete_label(label_id)
         if not success:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Label with id {label_id} not found"
-            )
+            raise ValueError(f"Label with id {label_id} not found")
+        
         return success
 
     # Update a label by id
     async def update_label(self, label_id: str, updated_label: LabelUpdate) -> LabelDto:
-        labels = await self.label_repo.update_label(label_id, updated_label)
-        if not labels:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Label with id {label_id} not found"
-            )
+        label = await self.label_repo.update_label(label_id, updated_label)
+        if not label:
+            raise ValueError(f"Label with id {label_id} not found")
+        
         # Haal het geüpdatete label terug voor response
         updated_label_obj = await self.label_repo.get_label_by_id(label_id)
 

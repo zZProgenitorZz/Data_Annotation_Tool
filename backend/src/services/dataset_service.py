@@ -270,9 +270,5 @@ class DatasetService:
         return deleted
 
 
-    # Checks on status
-    async def recalculate_status(self, dataset_id):
-
-        return True
+    # Checks on status (not done)
     
-

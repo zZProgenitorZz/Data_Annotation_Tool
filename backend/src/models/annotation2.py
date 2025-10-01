@@ -1,5 +1,5 @@
 from typing import List, Literal, Union, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from backend.src.helpers.objectid_helper import PyObjectId
 from datetime import datetime
 import uuid
@@ -46,6 +46,7 @@ class Annotation(BaseModel):
         MaskGeometry
     ]
 
+    model_config = ConfigDict(discriminator="type")
 
 # ---- Image model ----
 class ImageAnnotations(BaseModel):
@@ -71,6 +72,8 @@ class AnnotationDto(BaseModel):
         FreehandGeometry,
         MaskGeometry
     ] = None
+
+    model_config = ConfigDict(discriminator="type")
 
 
 # ---- Image model Dto----

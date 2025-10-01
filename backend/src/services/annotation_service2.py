@@ -6,14 +6,18 @@ class ImageAnnotationsService:
     def __init__(self, repo):
         self.repo = ImageAnnotationsRepo()
 
-    async def get_image_annotations_dto_by_id(self, image_id: str) -> ImageAnnotationsDto:
+    async def get_image_annotations_dto_by_imageId(self, image_id: str) -> ImageAnnotationsDto:
         # Haal ImageAnnotations object op
-        image_annotations: ImageAnnotations = await self.repo.get_image_annotations_by_id(image_id)
+        image_annotations: ImageAnnotations = await self.repo.get_image_annotations_by_imageId(image_id)
         if not image_annotations:
-            return None
+             raise ValueError(f"Annotations with imageId:{image_id} not found")
 
         # Zet om naar DTO
         return self._to_dto(image_annotations)
+    
+    
+
+
 
     def _to_dto(self, image_annotations: ImageAnnotations) -> ImageAnnotationsDto:
         dto = ImageAnnotationsDto(
