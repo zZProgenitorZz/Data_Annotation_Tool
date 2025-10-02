@@ -1,9 +1,9 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from backend.src.helpers.objectid_helper import PyObjectId
+from backend.src.helpers.helpers import PyObjectId
 import uuid
 
-class Feedback(BaseModel):
+class Remark(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
     annotation_id: Optional[PyObjectId] = None  # Bij welke annotatie deze feedback hoort
     image_id: Optional[PyObjectId] = None
@@ -18,7 +18,7 @@ class Feedback(BaseModel):
             PyObjectId: str
         }
 
-class FeedbackDTO(BaseModel):
+class RemarkDTO(BaseModel):
     id: str
     annotation_id: Optional[str] = None
     image_id: Optional[str] = None
