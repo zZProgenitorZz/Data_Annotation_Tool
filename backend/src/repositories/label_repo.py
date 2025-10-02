@@ -1,5 +1,5 @@
 
-from backend.src.helpers.objectid_helper import PyObjectId
+from backend.src.helpers.helpers import PyObjectId
 from backend.src.models.label import Label, LabelDto, LabelUpdate
 from backend.src.db.connection import db
 

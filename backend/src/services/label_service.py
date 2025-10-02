@@ -2,6 +2,7 @@ from backend.src.repositories.label_repo import LabelRepo
 from backend.src.models.label import Label, LabelDto, LabelUpdate
 from fastapi import HTTPException, status
 from typing import List
+from backend.src.helpers.helpers import NotFoundError
 
 class LabelService:
     def __init___(self):
@@ -25,7 +26,7 @@ class LabelService:
     async def get_label_by_id(self, label_id: str) -> LabelDto:
         label = await self.label_repo.get_label_by_id(label_id)
         if not label:
-            raise ValueError(f"Label with id {label_id} not found")
+            raise NotFoundError(f"Label with id {label_id} not found")
         
         label_dto = self.to_dto(label)
         return label_dto
@@ -35,7 +36,7 @@ class LabelService:
     async def delete_label(self, label_id: str) -> bool:
         success = await self.label_repo.delete_label(label_id)
         if not success:
-            raise ValueError(f"Label with id {label_id} not found")
+            raise NotFoundError(f"Label with id {label_id} not found")
         
         return success
 
@@ -43,7 +44,7 @@ class LabelService:
     async def update_label(self, label_id: str, updated_label: LabelUpdate) -> LabelDto:
         label = await self.label_repo.update_label(label_id, updated_label)
         if not label:
-            raise ValueError(f"Label with id {label_id} not found")
+            raise NotFoundError(f"Label with id {label_id} not found")
         
         # Haal het geüpdatete label terug voor response
         updated_label_obj = await self.label_repo.get_label_by_id(label_id)

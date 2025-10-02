@@ -1,11 +1,12 @@
 from backend.src.models.dataset import Dataset, DatasetUpdate, DatasetDto
 from backend.src.repositories.dataset_repo import DatasetRepo
-from datetime import datetime
+from backend.src.helpers.helpers import NotFoundError, SerializeHelper
 from backend.src.repositories.user_repo import UserRepo
 from backend.src.models.user import User, UserDto
 from backend.src.services.log_service import LogService
 from backend.src.services.image_service import ImageService, ImageMetadataRepo
 from typing import Optional
+from datetime import datetime, timezone
 
 class DatasetService:
     def __init__(self, basepath: str):
@@ -23,7 +24,8 @@ class DatasetService:
     
         dataset = await self.dataset_repo.get_dataset_by_id(dataset_id)
         if not dataset:
-            raise ValueError("Dataset not found")
+            raise NotFoundError(f"Dataset with id {dataset_id} not found")
+
 
         inserted_images = []
         for file_name in image_files:
@@ -38,13 +40,21 @@ class DatasetService:
 
 #-----------------------------------------------------------------------------------------------------
     # Create a new dataset
-    async def create_dataset(self, dataset_data: Dataset) -> str:
+    async def create_dataset(self, dataset_data: Dataset, current_user : UserDto) -> str:
         
-        success = await self.dataset_repo.create_dataset(dataset_data)
+        data = dataset_data.model_dump()
+        data.pop("id", None)  # Remove id if present, MongoDB will create one
+        data["createdAt"] = datetime.now(timezone.utc)
+        data["updatedAt"] = datetime.now(timezone.utc)
+        data["createdBy"] = str(current_user.id)
+        data = SerializeHelper.dates_to_datetime(data)
+
+        # Insert in repo
+        success = await self.dataset_repo.create_dataset(data)
+        
         if success:
 
-            user = await self.user_repo.get_user_by_id(str(dataset_data.createdBy))
-            username = user.username if user else "Unknown"
+            username = current_user.username if current_user else "Unknown"
 
             assigned_to_usernames = []
             if dataset_data.assignedTo:
@@ -55,10 +65,10 @@ class DatasetService:
             
 
             await self.log.log_action(
-                user_id=dataset_data.createdBy,
+                user_id=str(current_user.id),
                 action="Created",
-                target=f"Dataset: {dataset_data.name}",
-                details = {
+                target=f"Dataset: {data['name']}",
+                details={
                     "username": username,
                     "assigned_to": assigned_to_usernames
                 }
@@ -70,7 +80,7 @@ class DatasetService:
     async def get_dataset(self, dataset_id: str) -> DatasetDto:
         dataset = await self.dataset_repo.get_dataset_by_id(dataset_id)
         if not dataset:
-            raise ValueError(f"Dataset with id {dataset_id} not found")
+            raise NotFoundError(f"Dataset with id {dataset_id} not found")
         
         #Fetch user info
         created_by_user = await self.user_repo.get_user_by_id(str(dataset.createdBy))
@@ -133,7 +143,9 @@ class DatasetService:
                 assignedTo=assigned_to_usernames,
                 createdAt=dataset.createdAt,
                 updatedAt=dataset.updatedAt,
-                is_active=dataset.is_active
+                is_active=dataset.is_active,
+                date_of_collection=dataset.date_of_collection,
+                location_of_collection=dataset.location_of_collection
             )
             result.append(dataset_dto)
 
@@ -145,12 +157,12 @@ class DatasetService:
         # Haal huidige dataset op
         dataset = await self.dataset_repo.get_dataset_by_id(dataset_id)
         if not dataset:
-            raise ValueError(f"Dataset with id {dataset_id} not found")
+            raise NotFoundError(f"Dataset with id {dataset_id} not found")
 
         # Voer de update uit
         updated = await self.dataset_repo.update_dataset(dataset_id, dataset_update)
         if not updated:
-            raise ValueError(f"Failed to update dataset with id {dataset_id}")
+            raise NotFoundError(f"Failed to update dataset with id {dataset_id}")
 
         # Controleer wat er veranderd is en log
         if dataset_update.assignedTo is not None and dataset_update.assignedTo != dataset.assignedTo:
@@ -212,6 +224,9 @@ class DatasetService:
             is_active= False
         )
         dataset = await self.dataset_repo.get_dataset_by_id(dataset_id)
+        if not dataset:
+            raise NotFoundError(f"Dataset with id {dataset_id} not found")
+
         username = current_user.username
         
         await self.log.log_action(
@@ -233,6 +248,9 @@ class DatasetService:
         )
 
         dataset = await self.dataset_repo.get_dataset_by_id(dataset_id)
+        if not dataset:
+            raise NotFoundError(f"Dataset with id {dataset_id} not found")
+
         username = current_user.username
         
         await self.log.log_action(
@@ -252,7 +270,7 @@ class DatasetService:
     async def harddelete_dataset(self, dataset_id: str, current_user: UserDto) -> bool:
         deleted = await self.dataset_repo.delete_dataset(dataset_id)
         if not deleted:
-            raise ValueError(f"Failed to delete dataset with id {dataset_id}")
+            raise NotFoundError(f"Dataset with id {dataset_id} not found")
         
         dataset = await self.dataset_repo.get_dataset_by_id(dataset_id)
         username = current_user.username

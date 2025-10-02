@@ -1,6 +1,6 @@
 from backend.src.models.dataset import DatasetDto, Dataset, DatasetUpdate
 from backend.src.models.user import UserDto, User, UserUpdate
-from backend.src.helpers.objectid_helper import PyObjectId
+from backend.src.helpers.helpers import PyObjectId, SerializeHelper
 from backend.src.db.connection import db
 from datetime import datetime, timezone
 
@@ -10,12 +10,8 @@ class DatasetRepo:
         self.collection = db["dataset"]
 
     # Create a new dataset
-    async def create_dataset(self, dataset: Dataset) -> str:
-        dataset_dict = dataset.model_dump()
-        dataset_dict.pop("id", None)  # Remove id if present, MongoDB will create one
-        dataset_dict["createdAt"] = datetime.now(timezone.utc)
-        dataset_dict["updatedAt"] = datetime.now(timezone.utc)
-        result = await self.collection.insert_one(dataset_dict)
+    async def create_dataset(self, dataset: dict) -> str:
+        result = await self.collection.insert_one(dataset)
         return str(result.inserted_id)
 
     # Get database by id
@@ -52,6 +48,9 @@ class DatasetRepo:
             updated_data["updatedAt"] = datetime.now(timezone.utc)
             if "id" in updated_data:
                 updated_data.pop("id")  # Remove id if present, we don't update the _id field
+
+            updated_data = SerializeHelper.dates_to_datetime(updated_data
+                                                             )
             result = await self.collection.update_one({"_id": PyObjectId(dataset_id)}, {"$set": updated_data})
 
             

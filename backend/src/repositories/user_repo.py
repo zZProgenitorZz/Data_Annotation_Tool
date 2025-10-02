@@ -1,6 +1,6 @@
 
 from backend.src.models.user import UserDto, User, UserUpdate
-from backend.src.helpers.objectid_helper import PyObjectId
+from backend.src.helpers.helpers import PyObjectId
 from backend.src.db.connection import db
 
 

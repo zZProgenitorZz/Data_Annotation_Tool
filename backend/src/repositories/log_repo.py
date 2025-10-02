@@ -1,5 +1,5 @@
 from backend.src.models.log import Log, LogDto
-from backend.src.helpers.objectid_helper import PyObjectId
+from backend.src.helpers.helpers import PyObjectId
 from datetime import datetime, timezone
 from backend.src.db.connection import db
 

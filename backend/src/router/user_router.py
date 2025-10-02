@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, status, HTTPException
 from backend.src.services.user_service import UserService, ACCESS_TOKEN_EXPIRE_MINUTES
 from fastapi.security import OAuth2PasswordRequestForm
-from typing import Annotated
+from typing import Annotated, List
 from backend.src.models.user import Token, User, UserDto
 from datetime import timedelta
 
@@ -33,3 +33,13 @@ async def read_users_me(
     current_user: UserDto = Depends(user_service.get_current_active_user)
 ):
     return current_user
+
+@router.get("/all-users", response_model=List[UserDto])
+async def get_all_users():
+    users = await user_service.get_all_users()
+    return users
+
+@router.get("/{user_id}", response_model=UserDto)
+async def get_user(user_id: str):
+    user = await user_service.get_user(user_id)
+    return user

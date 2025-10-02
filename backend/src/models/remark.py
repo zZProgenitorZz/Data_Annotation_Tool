@@ -28,6 +28,6 @@ class RemarkDTO(BaseModel):
     status: bool
     reply: Optional[str] = None
 
-class FeedbackUpdate(BaseModel):
+class RemarkUpdate(BaseModel):
     status: Optional[bool] = None
     reply: Optional[str] = None
