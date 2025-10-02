@@ -4,7 +4,7 @@ from typing import Optional, List
 from PIL import Image
 from datetime import datetime
 from backend.src.models.imageMetadata import ImageMetadata, ImageMetadataDto, ImageMetadataUpdate
-from backend.src.helpers.objectid_helper import PyObjectId
+from backend.src.helpers.helpers import PyObjectId, NotFoundError
 
 
 class ImageService:
@@ -20,7 +20,7 @@ class ImageService:
     async def get_images_by_dataset(self, dataset_id: str) -> List[ImageMetadataDto]:
         images = await self.image_repo.get_image_by_dataset_id(dataset_id)
         if not images:
-            raise ValueError(f"Images with dataset ID: {dataset_id} not found")
+            raise NotFoundError(f"Images with dataset ID: {dataset_id} not found")
 
         images_dto = [
             ImageMetadataDto(
@@ -106,7 +106,9 @@ class ImageService:
     # soft delete dataset images(bulk)
     async def soft_delete_dataset_images(self, dataset_id: str) -> int:
         images = await self.image_repo.get_image_by_dataset_id(dataset_id)
-
+        if not images:
+            raise NotFoundError(f"Images with dataset ID:{dataset_id} not found")
+        
         count = 0
         for image in images:
             succes = await self.soft_delete_image(str(image.id))
@@ -118,7 +120,9 @@ class ImageService:
     # restore dataset images(bulk)
     async def restore_dataset_images(self, dataset_id: str) -> int:
         images = await self.image_repo.get_image_by_dataset_id(dataset_id)
-
+        if not images:
+            raise NotFoundError(f"Images with dataset ID:{dataset_id} not found")
+        
         count = 0
         for image in images:
             succes = await self.restore_image(str(image.id))
@@ -129,7 +133,8 @@ class ImageService:
     # hard delete dataset images(bulk)
     async def hard_delete_dataset_images(self, dataset_id: str) -> int:
         images = await self.image_repo.get_image_by_dataset_id(dataset_id)
-
+        if not images:
+            raise NotFoundError(f"Images with dataset ID:{dataset_id} not found")
         count = 0
         for image in images:
             succes = await self.hard_delete_image(str(image.id))

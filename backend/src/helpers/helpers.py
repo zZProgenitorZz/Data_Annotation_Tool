@@ -14,3 +14,5 @@ class PyObjectId(ObjectId):
         return ObjectId(v)
     
 
+class NotFoundError(Exception):
+    pass
