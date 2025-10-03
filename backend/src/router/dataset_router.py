@@ -12,10 +12,8 @@ from backend.src.helpers.helpers import NotFoundError
 router = APIRouter()
 
 
-#basepath for image location
-BASE_PATH = "C:/Users/Lenovo/Documents/VS Project/DataAnnotationTool/images"
 
-dataset_service = DatasetService(BASE_PATH)
+dataset_service = DatasetService()
 user_service = UserService()
 
 #Dependency voor role-check
@@ -83,10 +81,3 @@ async def hard_delete_dataset(dataset_id: str, current_user: UserDto = Depends(r
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-# Add images to dataset
-@router.post("/{dataset_id}/images", response_model=List[str])
-async def add_images(dataset_id: str, image_files: List[str], current_user: UserDto = Depends(user_service.get_current_active_user)):
-    try:
-        return await dataset_service.add_images_to_dataset(dataset_id, image_files, uploaded_by=current_user.id)
-    except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
