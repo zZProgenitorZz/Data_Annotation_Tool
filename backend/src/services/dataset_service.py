@@ -153,7 +153,7 @@ class DatasetService:
 
 
    # Update a dataset
-    async def update_dataset(self, dataset_id: str, dataset_update: DatasetUpdate, current_user: UserDto) -> bool:
+    """async def update_dataset(self, dataset_id: str, dataset_update: DatasetUpdate, current_user: UserDto) -> bool:
         # Haal huidige dataset op
         dataset = await self.dataset_repo.get_dataset_by_id(dataset_id)
         if not dataset:
@@ -213,9 +213,84 @@ class DatasetService:
                 }
             )
 
-        return updated
+        return updated """
 
   
+    async def update_dataset(self, dataset_id: str, updated_dataset: DatasetUpdate, current_user: UserDto) -> bool:
+        # Haal huidige dataset op
+        dataset = await self.dataset_repo.get_dataset_by_id(dataset_id)
+        if not dataset:
+            raise NotFoundError(f"Dataset with id {dataset_id} not found")
+
+        updated_data = updated_dataset.model_dump(exclude_unset=True)
+        updated_data["updatedAt"] = datetime.now(timezone.utc)
+        updated_data.pop("id", None)  # id nooit updaten
+
+        updated_data = SerializeHelper.dates_to_datetime(updated_data)
+
+   
+        # Nieuwe waardes uit updated_data halen
+        new_assigned = updated_data.get("assignedTo")
+        new_name = updated_data.get("name")
+        new_status = updated_data.get("status")
+        new_description = updated_data.get("description")
+
+        # Logging per attribuut
+        if new_assigned is not None and new_assigned != dataset.assignedTo:
+            await self.log.log_action(
+                user_id=current_user.id,
+                action="UPDATED_ASSIGNED_TO",
+                target=f"Dataset: {dataset.name or dataset.id}",
+                details={
+                    "old_assigned": dataset.assignedTo,
+                    "new_assigned": new_assigned,
+                    "username": current_user.username
+                }
+            )
+
+        if new_name is not None and new_name != dataset.name:
+            await self.log.log_action(
+                user_id=current_user.id,
+                action="UPDATED_NAME",
+                target=f"Dataset: {dataset.name or dataset.id}",
+                details={
+                    "old_name": dataset.name,
+                    "new_name": new_name,
+                    "username": current_user.username
+                }
+            )
+
+        if new_status is not None and new_status.lower() == "complete" and dataset.status != "complete":
+            await self.log.log_action(
+                user_id=current_user.id,
+                action="STATUS_COMPLETED",
+                target=f"Dataset: {dataset.name or dataset.id}",
+                details={
+                    "old_status": dataset.status,
+                    "new_status": new_status,
+                    "username": current_user.username
+                }
+            )
+
+        if new_description is not None and new_description != dataset.description:
+            await self.log.log_action(
+                user_id=current_user.id,
+                action="UPDATED_DESCRIPTION",
+                target=f"Dataset: {dataset.name or dataset.id}",
+                details={
+                    "old_description": dataset.description,
+                    "new_description": new_description,
+                    "username": current_user.username
+                }
+            )
+        # Voer de update uit
+        updated = await self.dataset_repo.update_dataset(dataset_id, updated_data)
+        if not updated:
+            raise NotFoundError(f"Failed to update dataset with id {dataset_id}")
+
+
+        return updated
+
 #------------------------------------------------------------------------------------------------------
   
   # soft delete dataset
@@ -223,6 +298,7 @@ class DatasetService:
         softdelete = DatasetUpdate(
             is_active= False
         )
+        softdelete = softdelete.model_dump(exclude_unset=True)
         dataset = await self.dataset_repo.get_dataset_by_id(dataset_id)
         if not dataset:
             raise NotFoundError(f"Dataset with id {dataset_id} not found")
@@ -237,15 +313,16 @@ class DatasetService:
                 "username": username
             }
 
-        )   
+        )
 
         return await self.dataset_repo.update_dataset(dataset_id, softdelete)
     
     # restore dataset
     async def restore_dataset(self, dataset_id: str, current_user: UserDto) -> bool:
-        softdelete = DatasetUpdate(
+        restore = DatasetUpdate(
             is_active= True
         )
+        restore = restore.model_dump(exclude_unset=True)
 
         dataset = await self.dataset_repo.get_dataset_by_id(dataset_id)
         if not dataset:
@@ -260,32 +337,37 @@ class DatasetService:
             details = {
                 "username": username
             }
-
         )   
 
 
-        return self.dataset_repo.update_dataset(dataset_id, softdelete)
+        return await self.dataset_repo.update_dataset(dataset_id, restore)
     
     # hard delete dataset
-    async def harddelete_dataset(self, dataset_id: str, current_user: UserDto) -> bool:
+    async def hard_delete_dataset(self, dataset_id: str, current_user: UserDto) -> bool:
+        # Haal dataset eerst op (voor logging)
+        dataset = await self.dataset_repo.get_dataset_by_id(dataset_id)
+        if not dataset:
+            raise NotFoundError(f"Dataset with id {dataset_id} not found")
+
+        # Delete uitvoeren
         deleted = await self.dataset_repo.delete_dataset(dataset_id)
         if not deleted:
-            raise NotFoundError(f"Dataset with id {dataset_id} not found")
-        
-        dataset = await self.dataset_repo.get_dataset_by_id(dataset_id)
+            raise NotFoundError(f"Failed to delete dataset with id {dataset_id}")
+
         username = current_user.username
-        
+
+        # Log na succesvolle delete
         await self.log.log_action(
-            user_id = current_user.id,
-            action = "HARD_DELETED",
+            user_id=current_user.id,
+            action="HARD_DELETED",
             target=f"Dataset: {dataset.name}",
-            details = {
+            details={
                 "username": username
             }
-
-        )   
+        )
 
         return deleted
+
 
 
     # Checks on status (not done)

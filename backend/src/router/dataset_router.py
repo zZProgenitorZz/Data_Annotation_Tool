@@ -79,7 +79,7 @@ async def restore_dataset(dataset_id: str, current_user: UserDto = Depends(requi
 @router.delete("/hard-d/{dataset_id}", response_model=bool)
 async def hard_delete_dataset(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer"]))):
     try:
-        return await dataset_service.harddelete_dataset(dataset_id, current_user)
+        return await dataset_service.hard_delete_dataset(dataset_id, current_user)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

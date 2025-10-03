@@ -41,7 +41,7 @@ class DatasetRepo:
         return result.deleted_count == 1
 
     # Update dataset by id
-    async def update_dataset(self, dataset_id: str, updated_dataset: DatasetUpdate) -> bool:
+    """async def update_dataset(self, dataset_id: str, updated_dataset: DatasetUpdate) -> bool:
         dataset = await self.collection.find_one({"_id" : PyObjectId(dataset_id)})
         if dataset:
             updated_data = updated_dataset.model_dump(exclude_unset=True)
@@ -55,5 +55,11 @@ class DatasetRepo:
 
             
             return result.modified_count > 0
-        return False
+        return False"""
+    
+    async def update_dataset(self, dataset_id: str, updated_data: dict) -> bool:
+        
+        result = await self.collection.update_one({"_id": PyObjectId(dataset_id)}, {"$set": updated_data})
+
+        return result.modified_count > 0
 

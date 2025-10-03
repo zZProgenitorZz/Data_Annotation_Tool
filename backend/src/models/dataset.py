@@ -7,7 +7,7 @@ class Dataset(BaseModel):
     id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
     name: str
     description: Optional[str] = None
-    createdBy: str
+    createdBy: Optional[str] = None
     status: str
     total_Images: int = 0
     completed_Images: int = 0
@@ -30,13 +30,13 @@ class DatasetDto(BaseModel):
     id: Optional[str] = None
     name: str
     description: str
-    createdBy: str
+    createdBy: Optional[str] = None
     status: str
     total_Images: int = 0
     completed_Images: int = 0
     locked : bool = None
     assignedTo: List[str] = Field(default_factory=list)
-    createdAt: datetime
+    createdAt: Optional[datetime] = None
     updatedAt: datetime
     is_active: bool
     date_of_collection: Optional[date] = None
@@ -45,17 +45,17 @@ class DatasetDto(BaseModel):
     
 
 class DatasetUpdate(BaseModel):
-    id: Optional[str] = None
     name: Optional[str] = None
     description: Optional[str] = None
     status: Optional[str] = None
-    total_Images: int = 0
-    completed_Images: int = 0
-    locked : Optional[bool] = None
-    assignedTo: List[str] = Field(default_factory=list)
-    createdAt: Optional[datetime] = None
+    total_Images: Optional[int] = None
+    completed_Images: Optional[int] = None
+    locked: Optional[bool] = None
+    assignedTo: Optional[List[str]] = None
     updatedAt: Optional[datetime] = None
 
     is_active: Optional[bool] = None
     date_of_collection: Optional[date] = None
     location_of_collection: Optional[str] = None
+
+    
