@@ -18,6 +18,16 @@ class UserRepo:
             **user
         )
     
+    # batch gebruik
+    async def get_users_by_ids(self, user_ids: list[str]) -> dict[str, User]:
+        object_ids = [PyObjectId(uid) for uid in user_ids]
+        cursor = self.collection.find({"_id": {"$in": object_ids}})
+        users_list = await cursor.to_list(length=len(object_ids))
+        return {str(user["_id"]): User(**user) for user in users_list}
+
+
+    
+    
     async def get_user_by_username_or_email(self, username_or_email: str) -> User | None:
         user = await self.collection.find_one({
             "$or": [

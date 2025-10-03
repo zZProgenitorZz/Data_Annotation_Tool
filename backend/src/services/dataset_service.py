@@ -111,7 +111,7 @@ class DatasetService:
         )
 
     # Get all datasets
-    async def get_all_datasets(self) -> list[DatasetDto]:
+    """async def get_all_datasets(self) -> list[DatasetDto]:
         datasets = await self.dataset_repo.get_all_datasets()
         if not datasets:
             return []
@@ -149,72 +149,63 @@ class DatasetService:
             )
             result.append(dataset_dto)
 
+        return result"""
+    
+    async def get_all_datasets(self) -> list[DatasetDto]:
+        datasets = await self.dataset_repo.get_all_datasets()
+        if not datasets:
+            return []
+        
+        # Stap 1: alle dataset IDs ophalen en alle user IDs verzamelen
+        all_user_ids = set()
+        for dataset in datasets:
+            all_user_ids.add(str(dataset.createdBy))
+            if dataset.assignedTo:
+                all_user_ids.update([str(uid) for uid in dataset.assignedTo])
+
+        # Stap 2: batch query voor alle users
+        users = await self.user_repo.get_users_by_ids(list(all_user_ids))
+        # users is bijvoorbeeld een dict: {user_id: user_obj}
+
+
+        # Stap 3: bouw DTO's
+        result = []
+        for dataset in datasets:
+            created_user = users.get(str(dataset.createdBy))
+            created_by_username = created_user.username if created_user else "Unknown"
+
+            assigned_to_usernames = []
+            if dataset.assignedTo:
+                for uid in dataset.assignedTo:
+                    user = users.get(str(uid))
+                    if user:
+                        assigned_to_usernames.append(user.username)
+
+            dataset_dto = DatasetDto(
+                id=str(dataset.id),
+                name=dataset.name,
+                description=dataset.description,
+                createdBy=created_by_username,
+                status=dataset.status,
+                total_Images=dataset.total_Images,
+                completed_Images=dataset.completed_Images,
+                locked=dataset.locked,
+                assignedTo=assigned_to_usernames,
+                createdAt=dataset.createdAt,
+                updatedAt=dataset.updatedAt,
+                is_active=dataset.is_active,
+                date_of_collection=dataset.date_of_collection,
+                location_of_collection=dataset.location_of_collection
+            )
+            result.append(dataset_dto)
+
         return result
 
 
+
+
+
    # Update a dataset
-    """async def update_dataset(self, dataset_id: str, dataset_update: DatasetUpdate, current_user: UserDto) -> bool:
-        # Haal huidige dataset op
-        dataset = await self.dataset_repo.get_dataset_by_id(dataset_id)
-        if not dataset:
-            raise NotFoundError(f"Dataset with id {dataset_id} not found")
-
-        # Voer de update uit
-        updated = await self.dataset_repo.update_dataset(dataset_id, dataset_update)
-        if not updated:
-            raise NotFoundError(f"Failed to update dataset with id {dataset_id}")
-
-        # Controleer wat er veranderd is en log
-        if dataset_update.assignedTo is not None and dataset_update.assignedTo != dataset.assignedTo:
-            await self.log.log_action(
-                user_id=current_user.id,
-                action="UPDATED_ASSIGNED_TO",
-                target=f"Dataset: {dataset.name}",
-                details={
-                    "old_assigned": dataset.assignedTo,
-                    "new_assigned": dataset_update.assignedTo,
-                    "username": current_user.username
-                }
-            )
-
-        if dataset_update.name is not None and dataset_update.name != dataset.name:
-            await self.log.log_action(
-                user_id=current_user.id,
-                action="UPDATED_NAME",
-                target=f"Dataset: {dataset.name}",
-                details={
-                    "old_name": dataset.name,
-                    "new_name": dataset_update.name,
-                    "username": current_user.username
-                }
-            )
-
-        if dataset_update.status is not None and dataset_update.status.lower() == "complete" and dataset.status != "complete":
-            await self.log.log_action(
-                user_id=current_user.id,
-                action="STATUS_COMPLETED",
-                target=f"Dataset: {dataset.name}",
-                details={
-                    "old_status": dataset.status,
-                    "new_status": dataset_update.status,
-                    "username": current_user.username
-                }
-            )
-
-        if dataset_update.description is not None and dataset_update.description != dataset.description:
-            await self.log.log_action(
-                user_id=current_user.id,
-                action="UPDATED_DESCRIPTION",
-                target=f"Dataset: {dataset.name}",
-                details={
-                    "old_description": dataset.description,
-                    "new_description": dataset_update.description,
-                    "username": current_user.username
-                }
-            )
-
-        return updated """
-
   
     async def update_dataset(self, dataset_id: str, updated_dataset: DatasetUpdate, current_user: UserDto) -> bool:
         # Haal huidige dataset op

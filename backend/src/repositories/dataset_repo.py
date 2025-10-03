@@ -41,22 +41,6 @@ class DatasetRepo:
         return result.deleted_count == 1
 
     # Update dataset by id
-    """async def update_dataset(self, dataset_id: str, updated_dataset: DatasetUpdate) -> bool:
-        dataset = await self.collection.find_one({"_id" : PyObjectId(dataset_id)})
-        if dataset:
-            updated_data = updated_dataset.model_dump(exclude_unset=True)
-            updated_data["updatedAt"] = datetime.now(timezone.utc)
-            if "id" in updated_data:
-                updated_data.pop("id")  # Remove id if present, we don't update the _id field
-
-            updated_data = SerializeHelper.dates_to_datetime(updated_data
-                                                             )
-            result = await self.collection.update_one({"_id": PyObjectId(dataset_id)}, {"$set": updated_data})
-
-            
-            return result.modified_count > 0
-        return False"""
-    
     async def update_dataset(self, dataset_id: str, updated_data: dict) -> bool:
         
         result = await self.collection.update_one({"_id": PyObjectId(dataset_id)}, {"$set": updated_data})
