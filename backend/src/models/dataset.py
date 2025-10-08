@@ -4,7 +4,7 @@ from backend.src.helpers.helpers import PyObjectId
 from datetime import datetime, date
 
 class Dataset(BaseModel):
-    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
+    id: Optional[PyObjectId] = Field(default=None, alias="_id")
     name: str
     description: Optional[str] = None
     createdBy: Optional[str] = None

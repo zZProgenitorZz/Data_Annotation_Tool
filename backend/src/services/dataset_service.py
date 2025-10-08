@@ -4,7 +4,7 @@ from backend.src.helpers.helpers import NotFoundError, SerializeHelper
 from backend.src.repositories.user_repo import UserRepo
 from backend.src.models.user import User, UserDto
 from backend.src.services.log_service import LogService
-from backend.src.services.image_service import ImageService, ImageMetadataRepo
+from backend.src.repositories.Image_metadata_repo import ImageMetadataRepo
 from typing import Optional
 from datetime import datetime, timezone
 
@@ -144,7 +144,7 @@ class DatasetService:
 
 
    # Update a dataset
-    async def update_dataset(self, dataset_id: str, updated_dataset: DatasetUpdate, current_user: UserDto) -> bool:
+    async def update_dataset(self, dataset_id: str, updated_dataset: DatasetUpdate, current_user: UserDto | None) -> bool:
         # Haal huidige dataset op
         dataset = await self.dataset_repo.get_dataset_by_id(dataset_id)
         if not dataset:
