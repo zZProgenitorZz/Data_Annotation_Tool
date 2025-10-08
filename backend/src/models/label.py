@@ -4,7 +4,7 @@ from backend.src.helpers.helpers import PyObjectId
 
 class Label(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
-    datasetId: Optional[PyObjectId] = None
+    datasetId: Optional[str] = None
     labelName: str
     labelDescription: Optional[str] = None 
 

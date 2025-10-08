@@ -1,9 +1,7 @@
-from backend.src.models.dataset import DatasetDto, Dataset, DatasetUpdate
-from backend.src.models.user import UserDto, User, UserUpdate
+
 from backend.src.helpers.helpers import PyObjectId
 from backend.src.db.connection import db
-from datetime import datetime, timezone
-from backend.src.models.imageMetadata import ImageMetadata, ImageMetadataDto, ImageMetadataUpdate
+from backend.src.models.imageMetadata import ImageMetadata
 
 
 class ImageMetadataRepo:
