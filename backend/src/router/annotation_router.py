@@ -77,6 +77,15 @@ async def update_image_annotations(image_id: str, updated_data: ImageAnnotations
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+# Delete a single annotation from an image
+@router.delete("/{image_id}/{annotation_id}", response_model=bool)
+async def delete_single_annotation(image_id: str, annotation_id: str):
+    try:
+        return await annotation_service.delete_sigle_annotation(image_id, annotation_id)
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # Delete all annotations for a given image
 @router.delete("/{image_id}", response_model=bool)

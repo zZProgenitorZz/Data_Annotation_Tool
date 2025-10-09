@@ -54,6 +54,13 @@ class ImageAnnotationsService:
             raise NotFoundError(f"Annotations with imageId:{image_id} not found")
         return succes
 
+    # Delete a sigle annotation from image
+    async def delete_sigle_annotation(self, iamge_id: str, annotation_id: str) -> bool:
+        succes = await self.repo.delete_single_annotation(iamge_id, annotation_id)
+        if not succes:
+            raise NotFoundError(f"Annotation with id:{annotation_id} not found in imageId:{iamge_id}")
+        return succes
+
     # Create image annotations
     async def create_image_annotations(self, image_annotations: ImageAnnotations) -> str:
         # ValidationError
