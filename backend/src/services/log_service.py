@@ -3,7 +3,7 @@ from backend.src.repositories.log_repo import LogRepository
 from backend.src.models.log import Log
 
 class LogService:
-    def __inti__(self):
+    def __init__(self):
         self.log_repo = LogRepository()
 
 

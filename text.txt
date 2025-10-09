@@ -24,4 +24,4 @@ Reviewer heeft feedback gegeven over image aan User
 
 
 
-
+rollen: admin, annotator, reviewer, guest

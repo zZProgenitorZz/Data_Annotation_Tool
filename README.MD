@@ -46,6 +46,8 @@
 
 7. python .\main.py
 
+uvicorn main:app --reload
+
 <!-- running the frontend  -->
 
 # running the frontend

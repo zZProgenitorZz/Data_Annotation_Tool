@@ -1,10 +1,10 @@
 from pydantic import BaseModel, Field
 from typing import Optional
-from backend.src.helpers.objectid_helper import PyObjectId
+from backend.src.helpers.helpers import PyObjectId
 
 class Label(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
-    datasetId: Optional[PyObjectId] = None
+    datasetId: Optional[str] = None
     labelName: str
     labelDescription: Optional[str] = None 
 
@@ -16,6 +16,7 @@ class Label(BaseModel):
 
 class LabelDto(BaseModel):
     id: Optional[str] = None
+    datasetId: Optional[str] = None
     labelName: str
     labelDescription: Optional[str] = None  
 

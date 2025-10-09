@@ -1,6 +1,6 @@
 
 from backend.src.models.user import UserDto, User, UserUpdate
-from backend.src.helpers.objectid_helper import PyObjectId
+from backend.src.helpers.helpers import PyObjectId
 from backend.src.db.connection import db
 
 
@@ -17,6 +17,31 @@ class UserRepo:
         return User(
             **user
         )
+    
+    # batch gebruik
+    async def get_users_by_ids(self, user_ids: list[str]) -> dict[str, User]:
+        object_ids = [PyObjectId(uid) for uid in user_ids]
+        cursor = self.collection.find({"_id": {"$in": object_ids}})
+        users_list = await cursor.to_list(length=len(object_ids))
+        return {str(user["_id"]): User(**user) for user in users_list}
+
+
+    
+    
+    async def get_user_by_username_or_email(self, username_or_email: str) -> User | None:
+        user = await self.collection.find_one({
+            "$or": [
+                {"username": username_or_email},
+                {"email": username_or_email}
+            ]
+        })
+        if not user:
+            return None
+        return User(
+            **user
+        )
+        
+    
 
     # Get all users
     async def get_all_users(self) -> list[User]:

@@ -1,18 +1,18 @@
 from pydantic import BaseModel, Field
 from typing import Optional
-from backend.src.helpers.objectid_helper import PyObjectId
+from backend.src.helpers.helpers import PyObjectId
 from datetime import datetime
 
 class ImageMetadata(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
-    datasetId: Optional[PyObjectId] = None
+    datasetId: Optional[str] = None
     fileName: str
     folderPath: str
     width: int
     height: int
     fileType: str
     
-    uploadedBy: Optional[PyObjectId] = None
+    uploadedBy: Optional[str] = None
     uploadedAt: Optional[datetime] = None
 
     is_active: bool
@@ -32,7 +32,7 @@ class ImageMetadataDto(BaseModel):
     height: int
     fileType: str
 
-    UploadedBy: Optional[PyObjectId] = None
+    UploadedBy: Optional[str] = None
     uploadedAt: Optional[datetime] = None
 
     is_active: bool
