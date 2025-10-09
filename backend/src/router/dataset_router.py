@@ -2,7 +2,7 @@ from backend.src.services.dataset_service import DatasetService
 from backend.src.services.user_service import UserService
 from backend.src.models.dataset import Dataset, DatasetUpdate, DatasetDto
 from backend.src.models.user import UserDto
-from typing import Annotated, List
+from typing import List
 from fastapi import APIRouter, Depends, status, HTTPException
 from datetime import datetime
 from backend.src.helpers.helpers import NotFoundError

@@ -26,7 +26,7 @@ class ImageAnnotationsService:
         annotations_dto = [
             AnnotationDto(
                 id=str(a.id),
-                labelId=str(a.label),
+                label=str(a.label),
                 type=a.type,
                 geometry=a.geometry
             )
@@ -96,7 +96,7 @@ class ImageAnnotationsService:
     def to_dto(self, image_annotations: ImageAnnotations) -> ImageAnnotationsDto:
         dto = ImageAnnotationsDto(
             id=str(image_annotations.id),
-            image=str(image_annotations.imageId) if image_annotations.imageId else None,
+            imageId=str(image_annotations.imageId),
             annotations=image_annotations.annotations
         )
 
