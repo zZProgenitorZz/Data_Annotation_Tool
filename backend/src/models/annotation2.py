@@ -36,7 +36,7 @@ class MaskGeometry(BaseModel):
 # ---- Annotation model ----
 class Annotation(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    labelId: Optional[PyObjectId] = None
+    label: Optional[str] = None
     type: Literal["bbox", "polygon", "ellipse", "freehand", "mask"]
     geometry: Union[
         BBoxGeometry,
@@ -51,7 +51,7 @@ class Annotation(BaseModel):
 # ---- Image model ----
 class ImageAnnotations(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
-    imageId: Optional[PyObjectId] = None
+    imageId: Optional[str] = None
     annotations: List[Annotation]
 
     class Config:
@@ -63,7 +63,7 @@ class ImageAnnotations(BaseModel):
 # ---- Annotation model Dto ----
 class AnnotationDto(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4())) 
-    labelId: Optional[PyObjectId] = None
+    label: Optional[str] = None
     type: Literal["bbox", "polygon", "ellipse", "freehand", "mask"] = None
     geometry: Union[
         BBoxGeometry,
@@ -78,8 +78,8 @@ class AnnotationDto(BaseModel):
 
 # ---- Image model Dto----
 class ImageAnnotationsDto(BaseModel):
-    id: Optional[PyObjectId] = Field(default=None, alias="_id")
-    imageId: Optional[PyObjectId] = None
+    id: Optional[str] = Field(default=None, alias="_id")
+    imageId: Optional[str] = None
     annotations: List[Annotation] = None
 
     class Config:

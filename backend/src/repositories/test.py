@@ -1,6 +1,5 @@
 import asyncio
 
-from backend.src.helpers import PyObjectId
 from backend.src.models.user import User, UserDto, UserUpdate
 from backend.src.repositories.user_repo import UserRepo
 from backend.src.repositories.dataset_repo import DatasetRepo
@@ -9,28 +8,30 @@ from backend.src.repositories.label_repo import LabelRepo
 from backend.src.models.label import Label
 from backend.src.repositories.annotation_repo2 import ImageAnnotationsRepo
 from backend.src.models.annotation2 import ImageAnnotations, Annotation, BBoxGeometry
+from backend.src.services.annotation_service2 import ImageAnnotationsService
 
 
 
 
 # Image_Annotaions
 annotation_repo = ImageAnnotationsRepo()
+annotation_service = ImageAnnotationsService()
 
 async def test_create_image_annotation():
     # Zet top-level ids om
  # Maak een nieuwe annotation
     annotation1 = Annotation(
-        label="68cbe2348c5a21a38681bba8None",  # of een PyObjectId van een label
+        label="blood cell 1",  # of een PyObjectId van een label
         type="bbox",
         geometry=BBoxGeometry(x=100, y=150, width=200, height=250)
     )
 
     # Maak ImageAnnotations
     image_annotations = ImageAnnotations(
-        image=None,  # of PyObjectId van de image
+        imageId="68e393f174b2cef7bf7a25a5",  # of PyObjectId van de image
         annotations=[annotation1]
     )
-    inserted_id = await annotation_repo.create_image_annotations(image_annotations)
+    inserted_id = await annotation_service.create_image_annotations(image_annotations)
     print("Inserted image annotation with id:", inserted_id)
 
 asyncio.run(test_create_image_annotation())

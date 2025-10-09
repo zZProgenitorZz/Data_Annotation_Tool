@@ -5,7 +5,7 @@ from typing import List
 
 
 class ImageAnnotationsService:
-    def __init__(self, repo):
+    def __init__(self):
         self.repo = ImageAnnotationsRepo()
 
     # Get ImageAnnotations object by image ID
@@ -16,7 +16,7 @@ class ImageAnnotationsService:
              raise NotFoundError(f"Annotations with imageId:{image_id} not found")
 
         # change to dto
-        return self._to_dto(image_annotations)
+        return self.to_dto(image_annotations)
 
     # Get annotations of one image
     async def get_annotations_for_image(self, image_id: str) -> List[AnnotationDto]:
@@ -26,7 +26,7 @@ class ImageAnnotationsService:
         annotations_dto = [
             AnnotationDto(
                 id=str(a.id),
-                labelId=str(a.labelId),
+                labelId=str(a.label),
                 type=a.type,
                 geometry=a.geometry
             )
@@ -41,7 +41,7 @@ class ImageAnnotationsService:
             raise NotFoundError("No image annotations found in the database")
         
         all_annotations_dto = [
-            self._to_dto(image_ann)
+            self.to_dto(image_ann)
             for image_ann in all_annotations
         ]
 
@@ -62,8 +62,10 @@ class ImageAnnotationsService:
 
         if not image_annotations.annotations or len(image_annotations.annotations) == 0:
             raise ValidationError("At least one annotation must be present")
-
-        inserted_id = await self.repo.create_image_annotations(image_annotations)
+        
+        doc = image_annotations.model_dump()
+        doc.pop("id", None)  # MongoDB maakt _id aan
+        inserted_id = await self.repo.create_image_annotations(doc)
         return inserted_id
 
 # Update annotations of a image
@@ -71,21 +73,27 @@ class ImageAnnotationsService:
         if not updated_data.annotations:
             raise ValidationError("Annotations list cannot be empty when updating")
 
-        succes = await self.repo.update_image_annotations(image_id, updated_data)
+        update_dict = updated_data.model_dump(exclude_unset=True)
+        update_dict.pop("id", None)
+
+        succes = await self.repo.update_image_annotations(image_id, update_dict)
         if not succes:
             raise NotFoundError(f"No image annotations found for imageId: {image_id}")
         return succes
 
     async def add_annotation_to_image(self, image_id: str, annotation: Annotation) -> bool:
-        if not annotation.labelId or not annotation.type:
-            raise ValidationError("Annotation must have labelId and type")
+        if not annotation.label or not annotation.type:
+            raise ValidationError("Annotation must have label and type")
 
-        succes = await self.repo.add_annotation_to_image(image_id, annotation)
+        annotation_dict = annotation.model_dump()
+        annotation_dict["id"] = str(annotation.id)  # Zorg dat ID altijd string is
+
+        succes = await self.repo.add_annotation_to_image(image_id, annotation_dict)
         if not succes:
             raise NotFoundError(f"Image with imageId: {image_id} not found")
         return succes
 
-    def _to_dto(self, image_annotations: ImageAnnotations) -> ImageAnnotationsDto:
+    def to_dto(self, image_annotations: ImageAnnotations) -> ImageAnnotationsDto:
         dto = ImageAnnotationsDto(
             id=str(image_annotations.id),
             image=str(image_annotations.imageId) if image_annotations.imageId else None,
@@ -94,8 +102,6 @@ class ImageAnnotationsService:
 
         # Zet annotation labels en ids om naar string
         for ann in dto.annotations:
-            if ann.labelId:
-                ann.labelId = str(ann.labelId)
             if ann.id:
                 ann.id = str(ann.id)
 
