@@ -7,6 +7,7 @@ from backend.src.router.dataset_router import router as dataset_router
 from backend.src.router.image_router import router as image_router
 from backend.src.router.label_router import router as label_router
 from backend.src.router.annotation_router import router as annnotation_router
+from backend.src.router.remark_router import router as remark_router
 
 
 user_service = UserService()
@@ -23,6 +24,8 @@ app.include_router(image_router, prefix="/image", tags=["image"])
 app.include_router(label_router, prefix="/label", tags=["label"])
 
 app.include_router(annnotation_router, prefix="/annotation", tags=["annotation"])
+
+app.include_router(remark_router, prefix="/remark", tags=["remark"])
 
 @app.get("/")
 def read_root():

@@ -4,8 +4,8 @@ from backend.src.models.remark import Remark, RemarkDTO, RemarkUpdate
 from backend.src.helpers.helpers import NotFoundError, ValidationError
 
 class RemarkService:
-    def __init__(self, repo: RemarkRepo):
-        self.repo = repo
+    def __init__(self):
+        self.repo = RemarkRepo()
 
     # Haal één remark op
     async def get_remark_by_id(self, remark_id: str) -> RemarkDTO:
@@ -25,7 +25,9 @@ class RemarkService:
     async def create_remark(self, remark: Remark) -> str:
         if not remark.message:
             raise ValidationError("Remark message is required")
-        return await self.repo.create_remark(remark)
+        doc = remark.model_dump()
+        doc.pop("id", None)
+        return await self.repo.create_remark(doc)
 
     # Delete remark
     async def delete_remark(self, remark_id: str) -> bool:
@@ -36,7 +38,9 @@ class RemarkService:
 
     # Update remark
     async def update_remark(self, remark_id: str, updated_remark: RemarkUpdate) -> bool:
-        succes = await self.repo.update_remark(remark_id, updated_remark)
+        doc = updated_remark.model_dump(exclude_unset=True)
+        doc.pop("id", None)
+        succes = await self.repo.update_remark(remark_id, doc)
         if not succes:
             raise NotFoundError(f"Remark with id {remark_id} not found")
         return succes
