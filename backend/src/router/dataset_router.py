@@ -23,14 +23,14 @@ async def create_dataset(dataset: Dataset, current_user: UserDto = Depends(requi
 
 # Get all datasets
 @router.get("/all-datasets", response_model=List[DatasetDto])
-async def get_all_datasets():
-    return await dataset_service.get_all_datasets()
+async def get_all_datasets(current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+    return await dataset_service.get_all_datasets(current_user)
 
 # Get dataset by ID
 @router.get("/{dataset_id}", response_model=DatasetDto)
-async def get_dataset(dataset_id: str):
+async def get_dataset(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
     try:
-        return await dataset_service.get_dataset(dataset_id)
+        return await dataset_service.get_dataset(dataset_id, current_user)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

@@ -56,10 +56,8 @@ class UserRepo:
         return None
 
     # Create a new user
-    async def create_user(self, user: User) -> str:
-        user_dict = user.model_dump()
-        user_dict.pop("id", None)  # Remove id if present, MongoDB will create one
-        result = await self.collection.insert_one(user_dict)
+    async def create_user(self, user: dict) -> str:
+        result = await self.collection.insert_one(user)
         return str(result.inserted_id)
 
 
@@ -69,14 +67,7 @@ class UserRepo:
         return result.deleted_count == 1
 
     # Update a user by id
-    async def update_user(self, user_id: str, updated_user: UserUpdate) -> bool:
-        user = await self.collection.find_one({"_id" : PyObjectId(user_id)})
-        if user:
-            updated_data = updated_user.model_dump(exclude_unset=True)
-            if "id" in updated_data:
-                updated_data.pop("id")  # Remove id if present, we don't update the _id field
-            result = await self.collection.update_one({"_id": PyObjectId(user_id)}, {"$set": updated_data})
+    async def update_user(self, user_id: str, updated_user: dict) -> bool:
+        result = await self.collection.update_one({"_id": PyObjectId(user_id)}, {"$set": updated_user})    
+        return result.modified_count > 0
 
-            
-            return result.modified_count > 0
-        return False

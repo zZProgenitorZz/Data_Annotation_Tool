@@ -1,11 +1,10 @@
 from backend.src.repositories.user_repo import UserRepo
 from backend.src.models.user import User, UserUpdate, Token, TokenData, UserDto
 from backend.src.services.log_service import LogService
-
+from backend.src.helpers.helpers import NotFoundError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from datetime import datetime, timezone, timedelta
-from typing import Annotated
 import jwt
 from jwt.exceptions import InvalidTokenError
 from passlib.context import CryptContext
@@ -21,7 +20,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/user/token")
 
-class UserService:
+class UserLogin:
     def __init__(self):
         self.user_repo = UserRepo()
         self.log = LogService()
@@ -113,3 +112,98 @@ class UserService:
             role=user.role,
             disabled=user.disabled,
         )
+    
+class UserService:
+    def __init__(self):
+        self.user_repo = UserRepo()
+        self.log = LogService()
+        self.user_login = UserLogin()
+
+
+
+    # Create a new user
+    async def create_user(self, user: User, current_user: UserDto | None = None) -> str:
+        # Hash the password before storing
+        user.hashed_password = self.user_login.get_password_hash(user.hashed_password)
+
+        created_user = user.model_dump()
+        created_user.pop("id", None)  # Remove id if present, MongoDB will create one
+
+        user_id = await self.user_repo.create_user(created_user)
+
+        # Log the creation action
+        if current_user:
+            await self.log.log_action(
+                user_id=user_id,
+                action="CREATED_USER",
+                target=user.username,
+                details={
+                    "created_by": current_user.username
+                }
+            )
+
+        return user_id
+    
+    # Update user details
+    async def update_user(self, user_id: str, updated_user: UserUpdate, current_user: UserDto | None = None) -> bool:
+        updated_user_data = updated_user.model_dump(exclude_unset=True)
+        updated_user_data.pop("id", None)  # Remove id if present
+
+        # Get the old user data first
+        old_user = await self.user_repo.get_user_by_id(user_id)
+        if not old_user:
+            raise NotFoundError(f"User with id {user_id} not found")
+
+        # Hash password if updated
+        if "hashed_password" in updated_user_data:
+            updated_user_data["hashed_password"] = self.user_login.get_password_hash(updated_user_data["hashed_password"])
+
+        # Perform the update
+        user = await self.user_repo.update_user(user_id, updated_user_data)
+        if not user:
+            raise NotFoundError(f"Failed to update user with id {user_id}")
+
+        # Compare old and new fields for logging
+        changed_fields = {}
+        for key, new_value in updated_user_data.items():
+            old_value = getattr(old_user, key, None)
+            if old_value != new_value:
+                changed_fields[key] = {"old": old_value, "new": new_value}
+
+        # Log the update action
+        if current_user:
+            await self.log.log_action(
+                user_id=current_user.id,
+                action="UPDATED_USER",
+                target=old_user.username,
+                details={
+                    "changed_fields": changed_fields,
+                    "updated_by": current_user.username
+                }
+            )
+
+        return user
+    
+    # Delete a user
+    async def delete_user(self, user_id: str, current_user: UserDto | None = None) -> bool:
+        # Get the user to be deleted for logging
+        user_to_delete = await self.user_repo.get_user_by_id(user_id)
+        if not user_to_delete:
+            raise NotFoundError(f"User with id {user_id} not found")
+
+        succes = await self.user_repo.delete_user(user_id)
+        if not succes:
+            raise NotFoundError(f"Failed to delete user with id {user_id}")
+
+        # Log the deletion action
+        if current_user:
+            await self.log.log_action(
+                user_id=current_user.id,
+                action="DELETED_USER",
+                target=user_to_delete.username,
+                details={
+                    "deleted_by": current_user.username
+                }
+            )
+
+        return succes

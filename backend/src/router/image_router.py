@@ -30,9 +30,9 @@ async def add_images(dataset_id: str, image_files: List[str], current_user: User
     
 # Get images from dataset
 @router.get("/{dataset_id}/all-images",response_model=list[ImageMetadataDto])
-async def get_images(dataset_id: str):
+async def get_images(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
     try:
-        return await image_service.get_images_by_dataset(dataset_id)
+        return await image_service.get_images_by_dataset(dataset_id, current_user)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
