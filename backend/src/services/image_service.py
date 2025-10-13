@@ -36,7 +36,7 @@ class ImageService:
     
 #-----------------------------------------------------------------------------------------------------------------------
 
-    async def get_images_by_dataset(self, dataset_id: str) -> List[ImageMetadataDto]:
+    async def get_images_by_dataset(self, dataset_id: str, current_User: UserDto | None = None) -> List[ImageMetadataDto]:
         images = await self.image_repo.get_image_by_dataset_id(dataset_id)
         if not images:
             raise NotFoundError(f"Images with dataset ID: {dataset_id} not found")
@@ -89,7 +89,7 @@ class ImageService:
         )
         soft_metadata = soft_delete.model_dump(exclude_unset=True)
         return await self.image_repo.update_image_metadata(image_id, soft_metadata)
-    # soft delete images
+    # soft delete all images
     async def soft_delete_images(self, image_ids: list[str] | None = None, dataset_id: str | None = None, current_user: UserDto | None = None) -> int:
 
         if not dataset_id:
@@ -132,7 +132,7 @@ class ImageService:
         )
         restore_metadata = restore.model_dump(exclude_unset=True)
         return await self.image_repo.update_image_metadata(image_id, restore_metadata)
-    # restore images
+    # restore all images
     async def restore_images(self, image_ids: list[str] | None = None, dataset_id: str | None = None, current_user: UserDto | None = None) -> int:
         
         if not dataset_id:
@@ -169,7 +169,7 @@ class ImageService:
         return count
 
     # -------------------hard delete one image
-    async def hard_delete_image(self, image_id: str) -> bool:
+    async def hard_delete_image(self, image_id: str, current_user: UserDto | None = None) -> bool:
         metadata = await self.image_repo.get_image_metadata_by_id(image_id)
         if not metadata:
             raise NotFoundError(f"Image metadata with id {image_id} not found")
@@ -186,7 +186,7 @@ class ImageService:
         return deleted
 
     # hard delete all soft-deleted images of a dataset
-    async def hard_delete_dataset_images(self, dataset_id: str) -> int:
+    async def hard_delete_dataset_images(self, dataset_id: str, current_user: UserDto | None = None) -> int:
         images = await self.image_repo.get_image_by_dataset_id(dataset_id)
         if not images:
             raise NotFoundError(f"Images with dataset ID: {dataset_id} not found")
@@ -199,7 +199,7 @@ class ImageService:
 
         count = 0
         for image in images_to_delete:
-            succes = await self.hard_delete_image(str(image.id))
+            succes = await self.hard_delete_image(str(image.id), current_user)
             if succes:
                 count += 1
 

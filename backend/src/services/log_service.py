@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from backend.src.repositories.log_repo import LogRepository
 from backend.src.models.log import Log
+from backend.src.models.user import UserDto
 
 class LogService:
     def __init__(self):
@@ -20,7 +21,7 @@ class LogService:
     async def get_log(self, log_id: str) -> Log:
         return await self.log_repo.get_log_by_id(log_id)
 
-    async def get_logs(self) -> list[Log]:
+    async def get_logs(self, current_user: UserDto | None = None) -> list[Log]:
         return await self.log_repo.get_all_logs()
 
     async def delete_log(self, log_id: str) -> bool:

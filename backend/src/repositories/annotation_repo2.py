@@ -47,6 +47,14 @@ class ImageAnnotationsRepo:
             {"$set": updated_data}
         )
         return result.modified_count > 0
+    
+    # delete a sigle annotation from  image_annotaions
+    async def delete_single_annotation(self, image_id: str, annotation_id: str) -> bool:
+        result = await self.collection.update_one(
+            {"imageId": str(image_id)},
+            {"$pull": {"annotations": {"id": str(annotation_id)}}}
+        )
+        return result.modified_count > 0
 
     # Optional: Add a single annotation to an existing image
     async def add_annotation_to_image(self, image_id: str, annotation: dict) -> bool:
