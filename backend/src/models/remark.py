@@ -5,10 +5,10 @@ import uuid
 
 class Remark(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
-    annotation_id: Optional[PyObjectId] = None  # Bij welke annotatie deze feedback hoort
-    image_id: Optional[PyObjectId] = None
-    from_user: Optional[PyObjectId] = None      # Wie de feedback stuurt
-    to_users: Optional[List[PyObjectId]] = None # Wie de feedback ontvangt (meerdere reviewers mogelijk)
+    annotation_id: Optional[str] = None  # Bij welke annotatie deze feedback hoort
+    image_id: Optional[str] = None
+    from_user: Optional[str] = None      # Wie de feedback stuurt
+    to_users: Optional[List[str]] = None # Wie de feedback ontvangt (meerdere reviewers mogelijk)
     message: str                                # De feedback zelf
     status: bool = False                        # False = nog niet reviewed, True = reviewed
     reply: Optional[str] = None                 # Reactie van ontvanger/annotator
@@ -19,7 +19,7 @@ class Remark(BaseModel):
         }
 
 class RemarkDTO(BaseModel):
-    id: str
+    id: Optional[str] = None
     annotation_id: Optional[str] = None
     image_id: Optional[str] = None
     from_user: str

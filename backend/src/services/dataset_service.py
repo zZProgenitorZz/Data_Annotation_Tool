@@ -57,7 +57,7 @@ class DatasetService:
 
 
     # Get a dataset by id
-    async def get_dataset(self, dataset_id: str) -> DatasetDto:
+    async def get_dataset(self, dataset_id: str, current_user: UserDto | None = None) -> DatasetDto:
         dataset = await self.dataset_repo.get_dataset_by_id(dataset_id)
         if not dataset:
             raise NotFoundError(f"Dataset with id {dataset_id} not found")
@@ -91,7 +91,7 @@ class DatasetService:
         )
 
     # Get all datasets    
-    async def get_all_datasets(self) -> list[DatasetDto]:
+    async def get_all_datasets(self, current_user : UserDto | None = None) -> list[DatasetDto]:
         datasets = await self.dataset_repo.get_all_datasets()
         if not datasets:
             return []
