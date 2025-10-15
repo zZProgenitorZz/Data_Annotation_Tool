@@ -13,16 +13,13 @@ export default function ForgotPassword({ setView }) {
       return;
     }
 
-    // No backend yet, just go to next screen
     setView("checkEmail"); // Move to "Check Your Email" screen
   };
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-b from-[#44F3C9] to-[#3F7790] px-[16px]">
-      {/* Rectangle card */}
       <div className="bg-[#FFFFFF] rounded-[12px] shadow-xl p-[20px] w-full max-w-[360px] flex flex-col items-center gap-[16px]">
         
-        {/* Placeholder icon */}
         <div className="w-[64px] h-[64px] bg-gray-300 rounded-full flex items-center justify-center text-[14px] font-semibold mt-[32px] mb-[24px]">
           <img 
           src="/src/assets/reset-password.png" 
@@ -35,12 +32,10 @@ export default function ForgotPassword({ setView }) {
             Trouble Signing In?
         </p>
 
-        {/* Description text */}
         <p className="text-center text-[#41768F] text-[15px] mt-[0px]">
           Enter your e-mail to reset your password.
         </p>
 
-        {/* Email input */}
         <form onSubmit={handleResetPassword} className="flex flex-col items-center w-full gap-[16px]">
         <input
           type="email"
@@ -55,7 +50,6 @@ export default function ForgotPassword({ setView }) {
           required
         />
 
-        {/* Reset Password button */}
         <button
           type="submit"
           onClick={handleResetPassword}
@@ -68,8 +62,6 @@ export default function ForgotPassword({ setView }) {
         </button>
         </form>
 
-        {/* Error message */}
-        {/* Error message */}
         <p
           className="text-[14px] text-[#FF4D4D] h-[0px] text-center mt-[-8px]"
           style={{ minHeight: '0px' }}
@@ -78,7 +70,6 @@ export default function ForgotPassword({ setView }) {
         </p>
 
 
-        {/* Back to login */}
         <button
           type="button"
           onClick={() => setView("login")}

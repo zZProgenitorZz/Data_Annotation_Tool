@@ -25,10 +25,8 @@ const CheckEmail = ({ setView }) => {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-b from-[#44F3C9] to-[#3F7790] px-4">
-      {/* Rectangle card - EXACT dezelfde als ForgotPassword */}
       <div className="bg-[#FFFFFF] rounded-[12px] shadow-xl p-[20px] w-full max-w-[360px] flex flex-col items-center gap-[16px]">
         
-        {/* Icon placeholder */}
         <div className="w-[64px] h-[64px] bg-gray-300 rounded-full flex items-center justify-center mt-[22px] mb-[2px]">
           <img 
           src="/src/assets/e-mail-logo.png" 
