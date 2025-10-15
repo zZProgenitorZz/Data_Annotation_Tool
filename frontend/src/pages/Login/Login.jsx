@@ -1,29 +1,46 @@
-import React, { use, useState } from "react";
+import React, { useState } from "react";
 import ForgotPassword from "./ForgotPassword";
 import CheckEmail from "./CheckEmail";
 import PasswordChanged from "./PasswordChanged";
-import Overview from "../Datasets/Overview";
+import overview from "../Datasets/Overview";
 import { useNavigate } from "react-router-dom";
+import { login, getCurrentUser } from "../../services/authService";
 
 function Login() {
   // 1. State for form inputs (from the AI-generated code)
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-
+  const [user, setUser] = useState(null);
   const [view, setView] = useState("login");
 
+  const navigate = useNavigate();
+
   // 2. Handler functions (from the AI-generated code)
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    console.log("Login attempt:", { username, password });
-  };
+  const handleSubmit = async (e) => {
+  e.preventDefault();
+  try {
+    // Login via FastAPI
+    await login(username, password);
+
+    // Get logged-in user info
+    const userData = await getCurrentUser();
+    setUser(userData);
+
+    console.log(user)
+    // Example: Navigate to overview page after login
+    navigate(overview);
+
+  } catch (error) {
+    console.error("Login failed:", error);
+    alert("Incorrect username or password");
+  }
+};
   
 
   const handleForgotPassword = () => {
     setView("forgotPassword");
   }
 
-  const navigate = useNavigate();
   const handleContinueAsGuest = (e) => {
     e.preventDefault();
      navigate("/overview");
