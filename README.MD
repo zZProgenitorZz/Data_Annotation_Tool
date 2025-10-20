@@ -16,7 +16,7 @@
 
 # activating the virtual environment
 
-2. .\venv\Script\Activate
+2. .\venv\Scripts\Activate
 
 # installing fastapi with every dependency
 

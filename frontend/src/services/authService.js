@@ -38,3 +38,19 @@ export async function createUser(user) {
     const response = await api.post("/user/", user);
     return response.data;
 }
+
+// Guest Login: POST /guest-login
+export async function guestLogin() {
+  const response = await api.post("/guest/guest-login");
+  const {access_token} = response.data;
+
+  localStorage.setItem("access_token", access_token)
+
+  return response.data
+}
+
+//Guest info: Get /guest/me
+export async function getGuestInfo() {
+  const response = await api.get("/guest/me");
+  return response.data
+}
