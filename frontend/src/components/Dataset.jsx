@@ -86,11 +86,6 @@ const Dataset = ({ dataset, editMode = false, onFieldChange = () => {} }) => {
   const [localData, setLocalData] = useState(dataset); 
 
  
-  useEffect(() => {
-    if (JSON.stringify(dataset) !== JSON.stringify(localData)) {
-      setLocalData(dataset);
-    }
-  }, [dataset]);
 
   const toggleDataset = () => setIsExpanded((s) => !s);
 
