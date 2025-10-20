@@ -5,10 +5,10 @@ from backend.src.helpers.helpers import PyObjectId
 class UserDto(BaseModel):
     id: Optional[str] = None
     username: str
-    email: EmailStr
+    email: str
     disabled: bool
     role: str
-    hashed_password: Optional[str] = None
+    is_guest: bool = False
 
 class User(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")

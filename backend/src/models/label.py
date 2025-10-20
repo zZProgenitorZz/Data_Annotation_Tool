@@ -8,11 +8,11 @@ class Label(BaseModel):
     labelName: str
     labelDescription: Optional[str] = None 
 
-    class Config:
-        populate_by_name = True
-        arbitrary_types_allowed = True
-        json_encoders = {PyObjectId: str}
-
+    model_config = {
+        "populate_by_name": True,
+        "arbitrary_types_allowed": True,
+        "json_encoders": {PyObjectId: str}
+    }
 
 class LabelDto(BaseModel):
     id: Optional[str] = None

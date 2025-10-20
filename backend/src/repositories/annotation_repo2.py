@@ -12,13 +12,7 @@ class ImageAnnotationsRepo:
         result = await self.collection.insert_one(image_annotations)
         return str(result.inserted_id)
 
-    # Get image annotations by imageId
-    async def get_image_annotations_by_imageId(self, image_id: str) -> ImageAnnotations:
-        doc = await self.collection.find_one({"imageId": str(image_id)})
-        if not doc:
-            return None
-        return ImageAnnotations(**doc)
-
+   
     # Get only annotations of a image by imageId
     async def get_annotations_for_image(self, image_id: str) -> List[Annotation]:
         doc = await self.collection.find_one({"imageId": str(image_id)})
@@ -40,13 +34,7 @@ class ImageAnnotationsRepo:
         result = await self.collection.delete_one({"imageId": str(image_id)})
         return result.deleted_count > 0
 
-    # Update image annotations by image/document id
-    async def update_image_annotations(self, image_id: str, updated_data: dict) -> bool:
-        result = await self.collection.update_one(
-            {"imageId": str(image_id)},
-            {"$set": updated_data}
-        )
-        return result.modified_count > 0
+
     
     # delete a sigle annotation from  image_annotaions
     async def delete_single_annotation(self, image_id: str, annotation_id: str) -> bool:

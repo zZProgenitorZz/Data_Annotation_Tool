@@ -7,9 +7,10 @@ class LabelService:
     def __init__(self):
         self.label_repo = LabelRepo()
 
-    async def create_label(self, label: Label, current_user: UserDto | None = None):
+    async def create_label(self, dataset_id: str, label: Label, current_user: UserDto | None = None):
         label_dict = label.model_dump()
         label_dict.pop("id", None)  # Remove id if present, MongoDB will create one
+        label_dict["datasetId"] = dataset_id
         success = await self.label_repo.create_label(label_dict)
         return success 
     

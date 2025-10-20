@@ -54,17 +54,18 @@ class ImageAnnotations(BaseModel):
     imageId: Optional[str] = None
     annotations: List[Annotation]
 
-    class Config:
-        populate_by_name = True
-        arbitrary_types_allowed = True
-        json_encoders = {PyObjectId: str}
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={PyObjectId: str}
+    )
 
 
 # ---- Annotation model Dto ----
 class AnnotationDto(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4())) 
     label: Optional[str] = None
-    type: Literal["bbox", "polygon", "ellipse", "freehand", "mask"] = None
+    type: Literal["bbox", "polygon", "ellipse", "freehand", "mask"]
     geometry: Union[
         BBoxGeometry,
         PolygonGeometry,
@@ -80,13 +81,13 @@ class AnnotationDto(BaseModel):
 class ImageAnnotationsDto(BaseModel):
     id: Optional[str] = Field(default=None, alias="_id")
     imageId: Optional[str] = None
-    annotations: List[Annotation] = None
+    annotations: List[AnnotationDto] = []
 
-    class Config:
-        populate_by_name = True
-        arbitrary_types_allowed = True
-        json_encoders = {PyObjectId: str}
-
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={PyObjectId: str}
+    )
 
 
 
