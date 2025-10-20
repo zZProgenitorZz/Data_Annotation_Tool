@@ -2,12 +2,13 @@ from backend.src.repositories.user_repo import UserRepo
 from backend.src.models.user import User, UserUpdate, Token, TokenData, UserDto
 from backend.src.services.log_service import LogService
 from backend.src.helpers.helpers import NotFoundError
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException, status, Security
+from fastapi.security import OAuth2PasswordBearer, HTTPBearer, HTTPAuthorizationCredentials
 from datetime import datetime, timezone, timedelta
 import jwt
 from jwt.exceptions import InvalidTokenError
 from passlib.context import CryptContext
+from backend.src.services.guest_session_service import get_guest_user
 
 # JWT TOKEN
 # to get a string like this run: 
@@ -19,6 +20,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/user/token")
+bearer_scheme = HTTPBearer(auto_error=False)
 
 class UserLogin:
     def __init__(self):
@@ -73,18 +75,40 @@ class UserLogin:
         )
         try:
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            user_id = payload.get("sub")  
+            user_id = payload.get("sub")
+            is_guest = payload.get("is_guest", False)
             if user_id is None:
                 raise credentials_exception
         except InvalidTokenError:
             raise credentials_exception
+        
+        if is_guest:
+            return get_guest_user(user_id)
+        
 
         user = await self.get_user(user_id) 
         if user is None:
             raise credentials_exception
         return user
     
-    #AUTHORIZE
+    # AUTHORIZE: Guest route
+    async def get_guest_user_from_token(
+        self, 
+        credentials: HTTPAuthorizationCredentials = Security(bearer_scheme)
+    ):
+        if not credentials:
+            raise HTTPException(status_code=401, detail="No token provided")
+        
+        token = credentials.credentials
+        guest = await self.get_current_user(token)
+        
+        if not getattr(guest, "is_guest", False):
+            raise HTTPException(status_code=403, detail="Not a guest")
+        
+        return guest
+
+        
+    #AUTHORIZE: User route
     async def get_current_active_user(self, token: str = Depends(oauth2_scheme)):
         current_user = await self.get_current_user(token)  # oauth2_scheme wordt automatisch gebruikt
         if current_user.disabled:
@@ -108,9 +132,9 @@ class UserLogin:
             id=str(user.id),
             username=user.username,
             email=user.email,
-            hashed_password=user.hashed_password,
             role=user.role,
             disabled=user.disabled,
+            is_guest= False
         )
     
 class UserService:

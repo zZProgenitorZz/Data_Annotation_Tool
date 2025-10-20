@@ -8,12 +8,26 @@ from backend.src.router.image_router import router as image_router
 from backend.src.router.label_router import router as label_router
 from backend.src.router.annotation_router import router as annnotation_router
 from backend.src.router.remark_router import router as remark_router
+from fastapi.middleware.cors import CORSMiddleware
+from backend.src.router.guest_router import router as guest_router
 
 
-user_service = UserService()
 
 app = FastAPI()
 
+
+
+origins = ["http://localhost:5173"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(guest_router, prefix="/guest",tags=["guest"])
 
 app.include_router(user_router, prefix="/user", tags=["user"])
 
