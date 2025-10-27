@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useContext } from "react";
 import Select from "react-select";
-
+import { AuthContext } from "../../components/AuthContext";
 
 // Up arrow icon (at the bottom of each dataset card)
 
@@ -41,10 +41,11 @@ const datasetBoxStyle = {
 
 
 
-
-
 // Row component OUTSIDE to prevent recreation on every render
 const Row = ({ label, name, type = "text", truncate = false, italic = false, localData, editMode, handleChange, users }) => {
+
+  const {currentUser, loading} = useContext(AuthContext);
+
   const getUserNames = (ids) => {
       return ids.map(id => {
         const user = users.find(u => u.id === id);
@@ -57,7 +58,18 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
     italic ? "text-[#6b7280] italic" : ""
   }`;
 
-  const nonEditable = ["updatedAt", "createdAt", "createdBy", "total_Images", "completed_Images"].includes(name);
+  const baseNonEditable = [
+    "updatedAt",
+    "createdAt",
+    "createdBy",
+    "total_Images",
+    "completed_Images"
+  ];
+
+  if (currentUser.role === "annotator") {
+    baseNonEditable.push("assignedTo");
+  }
+  const nonEditable = baseNonEditable.includes(name);
 
   if (editMode && !nonEditable) {
     const boxStyle = name === "name" ? datasetBoxStyle : editableBoxStyle;
@@ -98,7 +110,7 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
       );
     }
 
-    if (name === "assignedTo") {
+    if (name === "assignedTo" ) {
       const assignedArray = Array.isArray(value) ? value : (value ? value.split(", ") : []);
       const options = users.map(u => ({
         value: u.id,
@@ -200,9 +212,14 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
         </p>
       ) : (
         <div
-          className={`${textClass} ${truncate ? "truncate" : ""}`}
-          style={truncate ? { maxWidth: "150px" } : {}}
+          className={`${textClass}`}
+          style={{
+            wordWrap: "break-word",    // lange woorden breken
+            whiteSpace: "normal",      // tekst mag op meerdere regels
+            overflowWrap: "anywhere",  // moderne variant, breekt ook lange strings
+          }}
         >
+
           {name === "assignedTo" && Array.isArray(value)
             ? getUserNames(value).join(", ")
             : name === "createdAt" || name === "updatedAt"

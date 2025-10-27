@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useContext} from "react";
 import ForgotPassword from "./ForgotPassword";
 import CheckEmail from "./CheckEmail";
 import PasswordChanged from "./PasswordChanged";
 import { useNavigate } from "react-router-dom";
 import { login, getCurrentUser, guestLogin, getGuestInfo} from "../../services/authService";
+import { AuthContext } from "../../components/AuthContext";
 
 function Login() {
   const [username, setUsername] = useState("");
@@ -11,6 +12,7 @@ function Login() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState("login");
   const [errorMessage, setErrorMessage] = useState("");
+  const {setCurrentUser} = useContext(AuthContext);
 
   const navigate = useNavigate();
 
@@ -25,6 +27,7 @@ function Login() {
 
     // Get logged-in user info
     const userData = await getCurrentUser();
+    setCurrentUser(userData)
     setUser(userData);
 
     console.log(user)
