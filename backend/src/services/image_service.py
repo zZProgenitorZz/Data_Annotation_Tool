@@ -70,7 +70,6 @@ class ImageService:
             width=width,
             height=height,
             fileType=file_type,
-            uploadedBy=str(current_user.id),
             uploadedAt=datetime.now(timezone.utc),
             is_active=True
         )
@@ -215,7 +214,6 @@ class ImageService:
             width=image.width,
             height=image.height,
             fileType=image.fileType,
-            UploadedBy=str(image.uploadedBy) if image.uploadedBy else None,
             uploadedAt=image.uploadedAt,
             is_active=image.is_active
         )

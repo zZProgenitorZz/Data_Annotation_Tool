@@ -12,7 +12,6 @@ class ImageMetadata(BaseModel):
     height: int
     fileType: str
     
-    uploadedBy: Optional[str] = None
     uploadedAt: Optional[datetime] = None
 
     is_active: bool
@@ -32,7 +31,6 @@ class ImageMetadataDto(BaseModel):
     height: int
     fileType: str
 
-    uploadedBy: Optional[str] = None
     uploadedAt: Optional[datetime] = None
 
     is_active: bool
@@ -47,7 +45,6 @@ class ImageMetadataUpdate(BaseModel):
     height: Optional[int] = None
     fileType: Optional[str] = None
 
-    uploadedBy: Optional[str] = None
     uploadedAt: Optional[datetime] = None
 
     is_active: Optional[bool] = None
