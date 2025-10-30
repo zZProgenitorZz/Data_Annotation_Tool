@@ -9,7 +9,7 @@ import asyncio
 import logging
 import os
 from PIL import Image
-from backend.src.db.connection import BASE_PATH
+from backend.core.db import BASE_PATH
 
 #------------------------------------------------------------
 def get_guest_user(guest_id : str | None = None):

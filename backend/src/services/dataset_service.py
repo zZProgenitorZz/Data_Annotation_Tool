@@ -2,10 +2,9 @@ from backend.src.models.dataset import Dataset, DatasetUpdate, DatasetDto
 from backend.src.repositories.dataset_repo import DatasetRepo
 from backend.src.helpers.helpers import NotFoundError, SerializeHelper
 from backend.src.repositories.user_repo import UserRepo
-from backend.src.models.user import User, UserDto
+from backend.src.models.user import UserDto
 from backend.src.services.log_service import LogService
 from backend.src.repositories.Image_metadata_repo import ImageMetadataRepo
-from typing import Optional
 from datetime import datetime, timezone
 
 class DatasetService:
@@ -75,20 +74,7 @@ class DatasetService:
                     assigned_to_usernames.append(user.username)
 
         # Build and return DTO
-        return DatasetDto(
-            id=str(dataset.id),
-            name=dataset.name,
-            description=dataset.description,
-            createdBy=created_by_username,
-            status=dataset.status,
-            total_Images=dataset.total_Images,
-            completed_Images=dataset.completed_Images,
-            locked=dataset.locked,
-            assignedTo=assigned_to_usernames,
-            createdAt=dataset.createdAt,
-            updatedAt=dataset.updatedAt,
-            is_active=dataset.is_active
-        )
+        return to_dto(dataset, created_by_username, assigned_to_usernames)
 
     # Get all datasets    
     async def get_all_datasets(self, current_user : UserDto | None = None) -> list[DatasetDto]:
@@ -121,22 +107,7 @@ class DatasetService:
                     if user:
                         assigned_to_usernames.append(user.username)
 
-            dataset_dto = DatasetDto(
-                id=str(dataset.id),
-                name=dataset.name,
-                description=dataset.description,
-                createdBy=created_by_username,
-                status=dataset.status,
-                total_Images=dataset.total_Images,
-                completed_Images=dataset.completed_Images,
-                locked=dataset.locked,
-                assignedTo=assigned_to_usernames,
-                createdAt=dataset.createdAt,
-                updatedAt=dataset.updatedAt,
-                is_active=dataset.is_active,
-                date_of_collection=dataset.date_of_collection,
-                location_of_collection=dataset.location_of_collection
-            )
+            dataset_dto = to_dto(dataset, created_by_username, assigned_to_usernames)
             result.append(dataset_dto)
 
         return result
@@ -300,3 +271,21 @@ class DatasetService:
 
     # Checks on status (not done)
     
+def to_dto (dataset, username, assigned_to) :
+
+    return DatasetDto(
+                id=str(dataset.id),
+                name=dataset.name,
+                description=dataset.description,
+                createdBy=username,
+                status=dataset.status,
+                total_Images=dataset.total_Images,
+                completed_Images=dataset.completed_Images,
+                locked=dataset.locked,
+                assignedTo=assigned_to,
+                createdAt=dataset.createdAt,
+                updatedAt=dataset.updatedAt,
+                is_active=dataset.is_active,
+                date_of_collection=dataset.date_of_collection,
+                location_of_collection=dataset.location_of_collection
+            )

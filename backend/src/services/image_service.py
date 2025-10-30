@@ -1,186 +1,144 @@
-import os
+import uuid
 from backend.src.repositories.Image_metadata_repo import ImageMetadataRepo
-from typing import Optional, List
-from PIL import Image
-from datetime import datetime
-from backend.src.models.imageMetadata import ImageMetadata, ImageMetadataDto, ImageMetadataUpdate
-from backend.src.helpers.helpers import PyObjectId, NotFoundError
-from backend.src.repositories.dataset_repo import DatasetRepo
+from typing import List
+from datetime import datetime, timezone
+from backend.src.models.imageMetadata import ImageMetadata
+from backend.src.helpers.helpers import NotFoundError
+from backend.core.aws import s3, S3_BUCKET, S3_PREFIX
 from backend.src.models.user import UserDto
 from datetime import datetime, timezone
-from backend.src.services.dataset_service import DatasetService
+from backend.src.services.imageMetadata_service import MetadataService
+
+ALLOWED_TYPES = {"image/jpeg", "image/png", "image/tiff", "image/webp", "image/jpg"}
 
 class ImageService:
 
-    def __init__(self, base_path:str ):
+    def __init__(self):
         self.image_repo = ImageMetadataRepo()
-        self.base_path = base_path   # bv.  'C:/images/'
-        self.dataset_repo = DatasetRepo()
-        self.dataset_service = DatasetService()
+        self.metadata_service = MetadataService()
 
+ 
+    # ---------- presign upload ----------
+    async def presign_upload(self, dataset_id: str, files: List[dict], current_user):
+        """
+        files: [{filename, size, contentType}]
+        returns: [{imageId, s3Key, putUrl, headers}]
+        """
+        now = datetime.now(timezone.utc)
+        out = []
+        for f in files:
+            if f["contentType"].lower().strip() not in ALLOWED_TYPES:
+                raise ValueError(f"Unsupported content type: {f['contentType']}")
+            # create s3 key
+            ext = f["filename"].rsplit(".",1)[-1].lower() if "." in f["filename"] else "bin"
+            key = f"{S3_PREFIX}/{dataset_id}/{uuid.uuid4()}.{ext}"
+            
 
-    # Adding images to the dataset (This is what you actually use to add images)(giving images the dataset_id)
-    async def add_images_to_dataset(self, dataset_id: str, image_files: list[str], current_user: UserDto ):
+            # create metadata row as pending
+            meta = ImageMetadata(
+                datasetId=str(dataset_id),
+                fileName=f["filename"],
+                folderPath="",  # legacy field; no local path in S3 mode
+                width=0, height=0,  # fill later if you parse
+                fileType=ext,
+                s3Key=key,
+                contentType=f["contentType"],
+                sizeBytes=f.get("size", 0),
+                status="pending",
+                uploadedAt=now,
+                is_active=True
+            )
 
+           
 
-        inserted_images = []
-        for file_name in image_files:
-            image_metadata = await self.add_image(file_name, dataset_id, current_user)
-            inserted_images.append(image_metadata)
+            saved = await self.image_repo.create_image_metadata(meta.model_dump(
+                by_alias=True,
+                exclude_none=True,
+                exclude={"id"}
 
+            ))
+            
+            put_url = s3.generate_presigned_url(
+                ClientMethod="put_object",
+                Params={
+                    "Bucket": S3_BUCKET,
+                    "Key": key,
+                    "ContentType": f["contentType"]
+        
+                },
+                
+                ExpiresIn=60*5
+            )
+            out.append({
+                "imageId": str(saved.id),
+                "s3Key": key,
+                "putUrl": put_url,
+                "headers": {"Content-Type": f["contentType"]}
+            })
+            
 
-        await self.update_dataset_image_count(dataset_id, len(inserted_images), current_user)
-
-        return inserted_images
-
+        return out
     
-#-----------------------------------------------------------------------------------------------------------------------
-
-    async def get_images_by_dataset(self, dataset_id: str, current_User: UserDto | None = None) -> List[ImageMetadataDto]:
-        images = await self.image_repo.get_image_by_dataset_id(dataset_id)
-        if not images:
-            raise NotFoundError(f"Images with dataset ID: {dataset_id} not found")
-
-        images_dto = [
-            self.to_dto(image)
-            for image in images
-        ]
-
-
-        return images_dto
-
-    async def add_image(self, file_name: str, dataset_id: str, current_user: UserDto) -> ImageMetadataDto:
-        full_path = os.path.join(self.base_path, file_name)
-
-        if not os.path.exists(full_path):
-            raise FileNotFoundError(f"{full_path} does not exist")
-
+    # ----------  complete upload ----------
+    async def complete_upload(self, image_id: str, checksum: str | None = None, width: int | None = None, height: int | None = None):
+        doc = await self.image_repo.get_image_metadata_by_id(image_id)
+        if not doc:
+            raise NotFoundError(f"Image metadata with id {image_id} not found")
+        
+        prev_status = doc.status if hasattr(doc, "status") else None
+        # ensure object exists in S3
         try:
-            with Image.open(full_path) as img:
-                width, height = img.size
-                file_type = img.format.lower()
-        except Exception as e:
-            raise ValueError(f"Cannot open image {file_name}: {e}")
+            head = s3.head_object(Bucket=S3_BUCKET, Key=doc.s3Key)
+        except Exception:
+            # mark failed
+            await self.image_repo.update_image_metadata(image_id, {"status":"failed", "updatedAt": datetime.now(timezone.utc)})
+            raise
 
-        # Maak metadata object
-        metadata = ImageMetadata(
-            datasetId=str(dataset_id),
-            fileName=file_name,
-            folderPath=self.base_path,
-            width=width,
-            height=height,
-            fileType=file_type,
-            uploadedBy=str(current_user.id),
-            uploadedAt=datetime.now(timezone.utc),
-            is_active=True
+        patch = {
+            "status": "ready",
+            "updatedAt": datetime.now(timezone.utc),
+            "etag": head.get("ETag","").strip('"'),
+            "sizeBytes": head.get("ContentLength"),
+        }
+        if checksum: patch["checksum"] = checksum
+        if width is not None: patch["width"] = width
+        if height is not None: patch["height"] = height
+
+        await self.image_repo.update_image_metadata(image_id, patch)
+        # increment only once
+        if prev_status != "ready":
+            await self.metadata_service.update_dataset_image_count(doc.datasetId, 1, current_user=None)
+
+        return {"ok": True}
+
+  # ----------  signed GET for display ----------
+    async def get_signed_url(self, image_id: str):
+        doc = await self.image_repo.get_image_metadata_by_id(image_id)
+        if not doc or doc.status != "ready":
+            raise NotFoundError("Image not found or not ready")
+        url = s3.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={"Bucket": S3_BUCKET, "Key": doc.s3Key},
+            ExpiresIn=60*2
         )
-
-        # Sla op in DB
-        saved_image = await self.image_repo.create_image_metadata(metadata.model_dump(exclude={"id"}, exclude_unset=True))
-
-        # Maak DTO direct van opgeslagen object
-        return self.to_dto(saved_image)
-
+        return {"url": url, "contentType": doc.contentType}
     
-    # -------------------soft delete
-    async def soft_delete_image(self, image_id: str) -> bool:
-        soft_delete = ImageMetadataUpdate(
-            is_active = False
-        )
-        soft_metadata = soft_delete.model_dump(exclude_unset=True)
-        return await self.image_repo.update_image_metadata(image_id, soft_metadata)
-    # soft delete all images
-    async def soft_delete_images(self, image_ids: list[str] | None = None, dataset_id: str | None = None, current_user: UserDto | None = None) -> int:
 
-        if not dataset_id:
-            raise ValueError("dataset_id is required")
-
-        # haal alle images van de dataset
-        images_in_dataset = await self.image_repo.get_image_by_dataset_id(dataset_id)
-        if not images_in_dataset:
-            raise NotFoundError(f"Images with dataset id: {dataset_id} not found")
-        
-        if image_ids is None:
-            # soft-delete alle actieve images in de dataset
-            images_to_delete = [image for image in images_in_dataset if image.is_active]
-        else:
-            # soft-delete alleen de opgegeven images die in de dataset zitten
-            images_to_delete = [
-                image for image in images_in_dataset
-                if str(image.id) in image_ids and image.is_active
-            ]
-
-        if not images_to_delete:
-            return 0
-
-        count = 0
-        for image in images_to_delete:
-            succes = await self.soft_delete_image(str(image.id))
-            if succes:
-                count += 1
-
-        # update dataset image count
-        if count > 0:
-            await self.update_dataset_image_count(dataset_id, -count, current_user)
-
-        return count
-
-    # -------------------restore
-    async def restore_image(self, image_id: str) -> bool:
-        restore = ImageMetadataUpdate(
-            is_active = True
-        )
-        restore_metadata = restore.model_dump(exclude_unset=True)
-        return await self.image_repo.update_image_metadata(image_id, restore_metadata)
-    # restore all images
-    async def restore_images(self, image_ids: list[str] | None = None, dataset_id: str | None = None, current_user: UserDto | None = None) -> int:
-        
-        if not dataset_id:
-            raise ValueError("dataset_id is required")
-
-        # haal alle images van de dataset
-        images_in_dataset = await self.image_repo.get_image_by_dataset_id(dataset_id)
-        if not images_in_dataset:
-            raise NotFoundError(f"Images with dataset id: {dataset_id} not found")
-        
-        if image_ids is None:
-            # restore alle inactive images in de dataset
-            images_to_restore = [image for image in images_in_dataset if not image.is_active]
-        else:
-            # restore alleen de opgegeven images die in de dataset zitten en inactive zijn
-            images_to_restore = [
-                image for image in images_in_dataset
-                if str(image.id) in image_ids and not image.is_active
-            ]
-
-        if not images_to_restore:
-            return 0
-
-        count = 0
-        for image in images_to_restore:
-            succes = await self.restore_image(str(image.id))
-            if succes:
-                count += 1
-
-        # update dataset image count
-        if count > 0:
-            await self.update_dataset_image_count(dataset_id, count, current_user)
-
-        return count
 
     # -------------------hard delete one image
-    async def hard_delete_image(self, image_id: str, current_user: UserDto | None = None) -> bool:
+    async def hard_delete_image(self, image_id: str, current_user):
         metadata = await self.image_repo.get_image_metadata_by_id(image_id)
         if not metadata:
             raise NotFoundError(f"Image metadata with id {image_id} not found")
-        
-        # alleen hard delete als image soft-deleted is
         if metadata.is_active:
             return False
 
-        file_path = os.path.join(metadata.folderPath, metadata.fileName)
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        # NEW: delete from S3 if we have a key (instead of local os.remove)
+        if metadata.s3Key:
+            try:
+                s3.delete_object(Bucket=S3_BUCKET, Key=metadata.s3Key)
+            except Exception:
+                pass
 
         deleted = await self.image_repo.delete_image_metadata(image_id)
         return deleted
@@ -205,27 +163,4 @@ class ImageService:
 
         return count
     
-    #--------------------------helpers----------------------------------------------------------------
-    def to_dto(self, image: ImageMetadata) -> ImageMetadataDto:
-        return ImageMetadataDto(
-            id=str(image.id),
-            datasetId=str(image.datasetId) if image.datasetId else None,
-            fileName=image.fileName,
-            folderPath=image.folderPath,
-            width=image.width,
-            height=image.height,
-            fileType=image.fileType,
-            UploadedBy=str(image.uploadedBy) if image.uploadedBy else None,
-            uploadedAt=image.uploadedAt,
-            is_active=image.is_active
-        )
-    
-    async def update_dataset_image_count(self, dataset_id: str, change: int, current_user: UserDto | None = None):
-        dataset = await self.dataset_repo.get_dataset_by_id(dataset_id)
-        if not dataset:
-            raise NotFoundError(f"Dataset with id {dataset_id} not found")
-        
-        dataset.total_Images += change
-
-        dataset.total_Images = max(dataset.total_Images, 0)
-        await self.dataset_service.update_dataset(dataset_id, dataset, current_user=current_user)
+ 

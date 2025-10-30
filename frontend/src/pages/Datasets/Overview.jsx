@@ -1,15 +1,53 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
-import Dataset, { initialDatasets } from "../../components/Dataset";
+import { useState, useEffect, useMemo, useCallback, useRef, useContext } from "react";
 import UploadDataset from "../../components/UploadDataset";
 import selectionBox from "../../assets/selectionbox.png";
 import selectedBox from "../../assets/selectedbox.png";
+import { getAllDatasets, updateDataset, softDeleteDataset } from "../../services/datasetService";
+import DatasetWrapper from "./DatasetCard"
+import { getAllUsers } from "../../services/authService";
+import getChangedFields from "../../components/utils";
 
+
+const getAssignedUser = async () => {
+  try{
+    const allUsers = await getAllUsers()
+    //filter out admins
+    const nonAdminUsers = allUsers.filter((u) => u.role !== "admin")
+
+    const assignedUsers = nonAdminUsers.map((u) => ({
+      id: u.id,
+      username: u.username,
+      role: u.role
+    }))
+
+    return assignedUsers
+    
+  } catch(error) {
+    console.error("Error finding or filtering Users", error);
+  }
+}
+
+// Main Overview Component
 const Overview = () => {
-  const [datasetsState, setDatasetsState] = useState(initialDatasets);
+  const [datasetsState, setDatasetsState] = useState([]);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [draftDatasets, setDraftDatasets] = useState(initialDatasets);
   const [selectedDatasets, setSelectedDatasets] = useState([]);
+  const [assignedUsers, setAssignedUsers] = useState([])
+
+  
+  
+  
+  useEffect(() => {
+      const fetchUsers = async () => {
+        const result = await getAssignedUser();
+        setAssignedUsers(result);
+      };
+      fetchUsers();
+  }, []);
+  
+  // Use refs to store the Dataset components so we can access their local state
+  const datasetRefs = useRef({});
 
   // Prevent background scroll when upload is open
   useEffect(() => {
@@ -19,71 +57,101 @@ const Overview = () => {
     };
   }, [isUploadOpen]);
 
+  // Fetch datasets from backend when page loads
+  useEffect(() => {
+    const fetchDatasets = async () => {
+      try {
+        const data = await getAllDatasets();
+        setDatasetsState(data);
+      } catch (error) {
+        console.error("Error fetching datasets:", error);
+      }
+    };
+
+    fetchDatasets();
+  }, []);
+
   // Enter edit mode
   const enterEditMode = () => {
-    setDraftDatasets(datasetsState.map((d) => ({ ...d })));
     setEditMode(true);
     setSelectedDatasets([]);
   };
 
-  // Cancel edit
+  // Toggle selection when in edit mode
+  const toggleSelectDataset = useCallback((id) => {
+    setSelectedDatasets((prev) =>
+      prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]
+    );
+  }, []);
+
+  // Cancel edit - just exit edit mode, components will reset from their useEffect
   const cancelEdit = () => {
-    setDraftDatasets(datasetsState.map((d) => ({ ...d })));
     setEditMode(false);
     setSelectedDatasets([]);
+    // Force re-render by creating new object references
+    setDatasetsState(prev => prev.map(d => ({...d})));
   };
 
-  // Save edited datasets
-  const saveEdit = () => {
-    const updated = draftDatasets.map((d) => ({
-      ...d,
-      lastUpdated: new Date().toLocaleString(),
-    }));
-    setDatasetsState(updated);
-    setEditMode(false);
+  // Save edited datasets - collect local state from all Dataset components
+  const saveEdit = async () => {
+    try {
+      const updatedDatasets = [];
+      
+      // Collect all the local state from Dataset components
+      for (const dataset of datasetsState) {
+        const ref = datasetRefs.current[dataset.id];
+        if (ref && ref.getLocalData) {
+          updatedDatasets.push(ref.getLocalData());
+        } else {
+          updatedDatasets.push(dataset);
+        }
+      
+      }
+
+      // Loop through and update each dataset in the backend
+      for (const d of updatedDatasets) {
+        const original = datasetsState.find(data => data.id === d.id);
+
+        const changedFields = getChangedFields(original, d);
+
+        if (Object.keys(changedFields).length> 0) {
+        await updateDataset(d.id, {...changedFields });
+        }
+      }
+
+      // Update local state after all updates are done
+      setDatasetsState(updatedDatasets);
+      setEditMode(false);
+      setSelectedDatasets([]);
+    } catch (error) {
+      console.error("Error saving datasets:", error);
+    }
   };
 
   // Delete selected datasets
-  const handleDeleteSelected = () => {
-    setDatasetsState((prev) =>
-      prev.filter((d) => !selectedDatasets.includes(d.id))
-    );
-    setDraftDatasets((prev) =>
-      prev.filter((d) => !selectedDatasets.includes(d.id))
-    );
-    setSelectedDatasets([]);
-    setEditMode(false);
-  };
+  const handleDeleteSelected = async () => {
+    try {
+      // Call softDeleteDataset for each selected dataset
+      for (const datasetId of selectedDatasets) {
+        await softDeleteDataset(datasetId);
+      }
 
-  // Toggle selection when in edit mode
-  const toggleSelectDataset = (id) => {
-    if (!editMode) return;
-    setSelectedDatasets((prev) =>
-      prev.includes(id)
-        ? prev.filter((sid) => sid !== id)
-        : [...prev, id]
-    );
-  };
-
-  const handleFieldChange = useCallback((id, field, value) => {
-    setDraftDatasets((prev) => {
-      const newDrafts = prev.map((d) =>
-        d.id === id ? { ...d, [field]: value } : d
+      // Remove from local state
+      setDatasetsState((prev) =>
+        prev.filter((d) => !selectedDatasets.includes(d.id))
       );
-      return [...newDrafts]; 
-    });
-  }, []);
-
-  const displayed = useMemo(
-    () => (editMode ? draftDatasets : datasetsState),
-    [editMode, draftDatasets, datasetsState]
-  );
+      setSelectedDatasets([]);
+      setEditMode(false);
+    } catch (error) {
+      console.error("Error deleting datasets:", error);
+    }
+  };
 
   const columns = useMemo(() => {
     const colArr = [[], [], []];
-    displayed.forEach((data, i) => colArr[i % 3].push(data));
+    datasetsState.forEach((data, i) => colArr[i % 3].push(data));
     return colArr;
-  }, [displayed]);
+  }, [datasetsState]);
 
   return (
     <div className="h-screen flex flex-col bg-gradient-to-b from-[#44F3C9] to-[#3F7790]">
@@ -107,9 +175,11 @@ const Overview = () => {
 
       <div className="flex-1 overflow-auto px-[40px] pt-[40px] datasets-scroll">
         <div className="flex justify-center gap-[24px] items-start flex-wrap">
-          {columns.map((col, i) => (
-            <div key={i} className="flex flex-col gap-[24px]">
-              {col.map((data) => (
+          {columns.map((col, colIndex) => (
+            <div key={colIndex} className="flex flex-col gap-[24px]">
+              {col
+              .filter((data) => data.is_active)
+              .map((data) => (
                 <div key={data.id} className="relative inline-block align-top">
                   <div
                     className="relative rounded-[14px] overflow-visible inline-block align-top"
@@ -119,10 +189,13 @@ const Overview = () => {
                       display: "inline-block",
                     }}
                   >
-                    <Dataset
+                    <DatasetWrapper
                       dataset={data}
                       editMode={editMode}
-                      onFieldChange={handleFieldChange}
+                      ref={(ref) => {
+                        if (ref) datasetRefs.current[data.id] = ref;
+                      }}
+                      users={assignedUsers}
                     />
                     {editMode && (
                       <img
@@ -192,10 +265,11 @@ const Overview = () => {
               </button>
               <button
                 onClick={handleDeleteSelected}
+                disabled={selectedDatasets.length === 0}
                 className="h-[50px] px-[16px] bg-[#FCA5A5]
                  text-[#000000] text-[20px] font-[600] italic rounded-[10px]
                  border-[#CC3333] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition"
+                 active:brightness-80 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Delete
               </button>
@@ -219,21 +293,21 @@ const Overview = () => {
         onSave={(newData) => {
           const formatted = {
             id: newData.id || `Dataset${Math.floor(Math.random() * 10000)}`,
-            datasetName: newData.datasetName || newData.name || "Untitled Dataset",
+            name: newData.datasetName || newData.name || "Untitled Dataset",
             fileName: newData.fileName || "Unknown.zip",
             status: newData.status || "Pending review",
-            images: newData.images || 0,
+            total_Images: newData.images || 0,
+            completed_Images: 0,
             createdBy: newData.createdBy || "anthony",
-            assignedTo: newData.assignedTo || newData.assignTo || "N/A",
+            assignedTo: newData.assignedTo || newData.assignTo || ["N/A"],
             reviewedBy: newData.reviewedBy || newData.reviewer || "N/A",
-            createdAt: newData.createdAt || new Date().toLocaleString(),
-            lastUpdated: new Date().toLocaleString(),
-            dateOfCollection: newData.dateOfCollection || "N/A",
-            location: newData.location || "N/A",
+            createdAt: newData.createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            date_of_collection: newData.dateOfCollection || "N/A",
+            location_of_collection: newData.location || "N/A",
             description: newData.description || "",
           };
           setDatasetsState((prev) => [formatted, ...prev]);
-          setDraftDatasets((prev) => [formatted, ...prev]);
           setIsUploadOpen(false);
         }}
       />

@@ -1,6 +1,6 @@
 
 from backend.src.helpers.helpers import PyObjectId
-from backend.src.db.connection import db
+from backend.core.db import db
 from backend.src.models.imageMetadata import ImageMetadata
 
 
@@ -15,6 +15,7 @@ class ImageMetadataRepo:
         
         # het document ophalen via de inserted_id
         created_doc = await self.collection.find_one({"_id": result.inserted_id})
+        
         
         if not created_doc:
             raise Exception("Failed to fetch created image metadata")

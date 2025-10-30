@@ -1,7 +1,7 @@
-from backend.src.models.log import Log, LogDto
+from backend.src.models.log import Log
 from backend.src.helpers.helpers import PyObjectId
 from datetime import datetime, timezone
-from backend.src.db.connection import db
+from backend.core.db import db
 
 
 
