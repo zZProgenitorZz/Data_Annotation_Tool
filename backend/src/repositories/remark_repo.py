@@ -1,6 +1,6 @@
 from backend.src.helpers.helpers import PyObjectId
-from backend.src.models.remark import Remark, RemarkUpdate
-from backend.src.db.connection import db
+from backend.src.models.remark import Remark
+from backend.core.db import db
 
 class RemarkRepo:
     def __init__(self):

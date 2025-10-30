@@ -2,7 +2,7 @@ from backend.src.services.dataset_service import DatasetService
 from backend.src.models.dataset import Dataset, DatasetUpdate, DatasetDto
 from backend.src.models.user import UserDto
 from typing import List
-from fastapi import APIRouter, Depends, status, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from backend.src.helpers.helpers import NotFoundError
 from backend.src.helpers.auth_helper import require_roles, is_guest_user
 from backend.src.services.guest_session_service import guest_session_service

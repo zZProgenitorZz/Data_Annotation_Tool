@@ -1,7 +1,6 @@
 from typing import List, Literal, Union, Optional
 from pydantic import BaseModel, Field, ConfigDict
 from backend.src.helpers.helpers import PyObjectId
-from datetime import datetime
 import uuid
 
 

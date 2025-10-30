@@ -2,10 +2,9 @@ from backend.src.models.dataset import Dataset, DatasetUpdate, DatasetDto
 from backend.src.repositories.dataset_repo import DatasetRepo
 from backend.src.helpers.helpers import NotFoundError, SerializeHelper
 from backend.src.repositories.user_repo import UserRepo
-from backend.src.models.user import User, UserDto
+from backend.src.models.user import UserDto
 from backend.src.services.log_service import LogService
 from backend.src.repositories.Image_metadata_repo import ImageMetadataRepo
-from typing import Optional
 from datetime import datetime, timezone
 
 class DatasetService:

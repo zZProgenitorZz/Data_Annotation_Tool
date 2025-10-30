@@ -2,13 +2,13 @@ import api from "../api";
 
 // Create new dataset
 export async function createDataset(dataset) {
-  const response = await api.post("dataset/create", dataset);
+  const response = await api.post("/dataset/create", dataset);
   return response.data;
 }
 
 // Get all datasets
 export async function getAllDatasets() {
-  const response = await api.get("dataset/all-datasets");
+  const response = await api.get("/dataset/all-datasets");
   return response.data;
 }
 

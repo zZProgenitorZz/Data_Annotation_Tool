@@ -1,7 +1,7 @@
 
 from backend.src.helpers.helpers import PyObjectId
 from backend.src.models.label import Label
-from backend.src.db.connection import db
+from backend.core.db import db
 
 
 

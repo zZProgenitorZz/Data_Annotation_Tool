@@ -1,5 +1,5 @@
 from backend.src.repositories.user_repo import UserRepo
-from backend.src.models.user import User, UserUpdate, Token, TokenData, UserDto
+from backend.src.models.user import User, UserUpdate, UserDto
 from backend.src.services.log_service import LogService
 from backend.src.helpers.helpers import NotFoundError
 from fastapi import Depends, HTTPException, status, Security

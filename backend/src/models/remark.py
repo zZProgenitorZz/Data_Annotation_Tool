@@ -1,7 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from backend.src.helpers.helpers import PyObjectId
-import uuid
 
 class Remark(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")

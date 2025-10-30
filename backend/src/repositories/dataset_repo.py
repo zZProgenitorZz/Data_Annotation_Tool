@@ -1,6 +1,6 @@
 from backend.src.models.dataset import Dataset
 from backend.src.helpers.helpers import PyObjectId
-from backend.src.db.connection import db
+from backend.core.db import db
 
 
 class DatasetRepo:
