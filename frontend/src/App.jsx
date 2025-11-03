@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Login from "./pages/Login/Login.jsx";
 import Overview from "./pages/Datasets/Overview.jsx";
 import { AuthProvider } from "./components/AuthContext.jsx";
-import ImagesList from "./pages/Datasets/ImagesList.jsx"
+import ImageList from "./pages/Datasets/ImageList.jsx"
 import ImageGrid from "./components/ImageGrid.jsx"
 
 function App() {
@@ -14,7 +14,7 @@ function App() {
 
           <Route path="/" element={<Login />} />
           <Route path="/overview" element={<Overview />} />
-          <Route path="/images" element={<ImagesList/>}/>
+          <Route path="/imageList" element={<ImageList/>}/>
           <Route path="/imageGrid" element={<ImageGrid/>}/>
 
 

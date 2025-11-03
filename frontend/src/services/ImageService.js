@@ -28,6 +28,13 @@ export async function completeImage(imageId, extra = {}) {
   return data;
 }
 
+export async function completeImagesBulk(items) {
+  // items: [{ imageId, checksum?, width?, height? }, ...]
+  const { data } = await api.post(`/image/images/complete-bulk`, items);
+  return data;
+}
+
+
 /**
  * List images for a dataset.
  * Response: [{ _id, originalFilename, contentType }, ...]
@@ -62,3 +69,15 @@ export async function uploadToS3(putUrl, file, headers = {}) {
   if (!res.ok) throw new Error(`S3 upload failed: ${res.status}`);
   return true;
 }
+
+
+export async function softDeleteImage(dataset_id, image_id) {
+  const {data} = await api.delete(`/image/${dataset_id}/soft`, image_id);
+  return data;
+}
+
+export async function hardDeleteImage(image_id) {
+  const {data} = await api.delete(`/image/${image_id}/hard`);
+  return data
+}
+

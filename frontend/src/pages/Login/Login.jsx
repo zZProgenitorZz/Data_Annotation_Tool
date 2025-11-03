@@ -36,7 +36,7 @@ function Login() {
 
       console.log(user)
       // Example: Navigate to overview page after login
-      navigate("/Images");
+      navigate("/overview");
 
     } catch (error) {
       console.error("Login failed:", error);

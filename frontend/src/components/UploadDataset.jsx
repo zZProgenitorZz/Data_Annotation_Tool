@@ -1,33 +1,69 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useContext } from "react";
+import Select from "react-select";
+import { AuthContext } from "./AuthContext";
 
-const UploadDataset = ({ isOpen, onClose, onSave, datasetToEdit }) => {
+const UploadDataset = ({ isOpen, onClose, users, onSave, datasetToEdit }) => {
   const initialFormData = {
-    datasetName: "",
-    assignedTo: "",
-    reviewedBy: "",
-    dateOfCollection: "",
-    location: "",
+    name: "",
+    status: "",
+    total_Images: 0,
+    completed_Images: 0,
+    createdBy: "",
+    assignedTo: [],
+    date_of_collection: "",
+    is_active: true,
+    location_of_collection: "",
     description: "",
-    file: null,
-    folderName: "",
-    fileName: "",
-    images: 0,
+    locked: false
   };
 
   const [formData, setFormData] = useState(initialFormData);
+
+  // 🔹 Alleen voor UI, gaat NIET naar backend
+  const [selectedFolderName, setSelectedFolderName] = useState("");
+  const [selectedImageCount, setSelectedImageCount] = useState(0);
+
+  const [selectedFiles, setSelectedFiles] = useState([]);
+
   const fileInputRef = useRef(null);
+  const { currentUser } = useContext(AuthContext);
 
   useEffect(() => {
     if (isOpen) {
-      setFormData(datasetToEdit || initialFormData);
+      if (datasetToEdit) {
+        setFormData({
+          ...initialFormData,
+          ...datasetToEdit,
+          assignedTo: Array.isArray(datasetToEdit.assignedTo)
+            ? datasetToEdit.assignedTo
+            : datasetToEdit.assignedTo
+            ? String(datasetToEdit.assignedTo).split(", ")
+            : [],
+        });
+
+        // Bij edit kun je evt. de bestaande total_Images tonen
+        setSelectedFolderName("");
+        setSelectedImageCount(datasetToEdit.total_Images || 0);
+      } else {
+        setFormData(initialFormData);
+        setSelectedFolderName("");
+        setSelectedImageCount(0);
+      }
     }
   }, [isOpen, datasetToEdit]);
 
   if (!isOpen) return null;
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+  // kan event OF ("naam", value) aan
+  const handleChange = (eOrName, maybeValue) => {
+    if (typeof eOrName === "string") {
+      const name = eOrName;
+      const value = maybeValue;
+      setFormData((prev) => ({ ...prev, [name]: value }));
+    } else {
+      const { name, value } = eOrName.target;
+      setFormData((prev) => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleFileSelect = () => fileInputRef.current.click();
@@ -43,26 +79,31 @@ const UploadDataset = ({ isOpen, onClose, onSave, datasetToEdit }) => {
 
     const imageFiles = files.filter((f) => f.type.startsWith("image/"));
 
-    setFormData({
-      ...formData,
-      file: firstFile,
-      folderName,
-      fileName: folderName,
-      images: imageFiles.length,
-    });
+    // 🔹 UI info
+    setSelectedFolderName(folderName);
+    setSelectedImageCount(imageFiles.length);
+
+    setSelectedFiles(imageFiles);
+
+    // For backend: total_iamges
+    setFormData((prev) => ({
+      ...prev,
+      total_Images: 0,
+    }));
   };
 
   const handleSave = () => {
     onSave({
-      ...formData,
-      id: formData.id || `Dataset${Date.now()}`,
-      status: "Pending review",
-      createdAt: formData.createdAt || new Date().toLocaleString(),
-      lastUpdated: new Date().toLocaleString(),
-      createdBy: "anthony", 
+      dataset: {
+        ...formData,
+        status: "Pending review",
+        createdBy: currentUser?.id,
+      },
+      files: selectedFiles,   // geef de images mee aan parent
     });
     onClose();
   };
+
 
   const focusStyle = { outline: "2px solid #41768F" };
   const blurStyle = { outline: "none" };
@@ -82,6 +123,17 @@ const UploadDataset = ({ isOpen, onClose, onSave, datasetToEdit }) => {
     onMouseDown: (e) => (e.currentTarget.style.filter = "brightness(0.85)"),
     onMouseUp: (e) => (e.currentTarget.style.filter = "brightness(0.95)"),
   };
+
+  const assignedOptions = users.map((u) => ({
+    value: u.id,
+    label: `${u.username} (${u.role})`,
+  }));
+
+  const assignedArray = Array.isArray(formData.assignedTo)
+    ? formData.assignedTo
+    : formData.assignedTo
+    ? String(formData.assignedTo).split(", ")
+    : [];
 
   return (
     <div
@@ -123,6 +175,7 @@ const UploadDataset = ({ isOpen, onClose, onSave, datasetToEdit }) => {
           <input
             type="file"
             ref={fileInputRef}
+            multiple
             style={{ display: "none" }}
             webkitdirectory="true"
             directory="true"
@@ -166,62 +219,113 @@ const UploadDataset = ({ isOpen, onClose, onSave, datasetToEdit }) => {
             boxSizing: "border-box",
           }}
         >
-          <div style={{ color: "#4B5563", fontSize: "16px", overflowWrap: "anywhere" }}>
-            Selected Folder: {formData.folderName || "None"}
+          <div
+            style={{
+              color: "#4B5563",
+              fontSize: "16px",
+              overflowWrap: "anywhere",
+            }}
+          >
+            {/* 🔹 alleen lokale state */}
+            Selected Folder: {selectedFolderName || "None"}
           </div>
           <div style={{ color: "#4B5563", fontSize: "16px" }}>
-            Images: {formData.images}
+            Images: {selectedImageCount}
           </div>
 
+          {/* name i.p.v. datasetName */}
           <input
             type="text"
-            name="datasetName"
+            name="name"
             placeholder="Dataset Name"
-            value={formData.datasetName}
+            value={formData.name}
             onChange={handleChange}
             onFocus={(e) => (e.target.style.outline = focusStyle.outline)}
             onBlur={(e) => (e.target.style.outline = blurStyle.outline)}
             style={inputStyle}
           />
 
-          <input
-            type="text"
+          {/* Multi-select assignedTo */}
+          <Select
+            isMulti
             name="assignedTo"
+            options={assignedOptions}
+            value={assignedOptions.filter((opt) =>
+              assignedArray.includes(opt.value)
+            )}
+            onChange={(selected) =>
+              handleChange(
+                "assignedTo",
+                (selected || []).map((opt) => opt.value)
+              )
+            }
             placeholder="Assign to"
-            value={formData.assignedTo}
+            styles={{
+              control: (base, state) => ({
+                ...base,
+                ...inputStyle,
+                borderColor: state.isFocused ? "#66B8A6" : "#D1D5DB",
+                boxShadow: state.isFocused
+                  ? "0 0 0 2px rgba(102, 184, 166, 0.3)"
+                  : "none",
+                minHeight: "36px",
+              }),
+              valueContainer: (base) => ({
+                ...base,
+                flexWrap: "wrap",
+                overflow: "visible",
+              }),
+              multiValue: (base) => ({
+                ...base,
+                backgroundColor: "#E5F9F7",
+                borderRadius: "4px",
+              }),
+              multiValueLabel: (base) => ({
+                ...base,
+                color: "#000",
+              }),
+              option: (base, { isFocused, isSelected }) => ({
+                ...base,
+                backgroundColor: isSelected
+                  ? "#B3DCD7"
+                  : isFocused
+                  ? "#E5F9F7"
+                  : "#FFFFFF",
+                color: "#000000",
+                cursor: "pointer",
+              }),
+              menu: (base) => ({
+                ...base,
+                borderRadius: "6px",
+                overflow: "hidden",
+                boxShadow: "0px 2px 6px rgba(0, 0, 0, 0.15)",
+                zIndex: 10,
+              }),
+              placeholder: (base) => ({
+                ...base,
+                fontSize: "14px",
+              }),
+            }}
+          />
+
+          {/* date_of_collection */}
+          <input
+            type="text"
+            name="date_of_collection"
+            placeholder="Date of sample collection (yyyy/mm/dd)"
+            value={formData.date_of_collection}
             onChange={handleChange}
             onFocus={(e) => (e.target.style.outline = focusStyle.outline)}
             onBlur={(e) => (e.target.style.outline = blurStyle.outline)}
             style={inputStyle}
           />
 
+          {/* location_of_collection */}
           <input
             type="text"
-            name="reviewedBy"
-            placeholder="Reviewer"
-            value={formData.reviewedBy}
-            onChange={handleChange}
-            onFocus={(e) => (e.target.style.outline = focusStyle.outline)}
-            onBlur={(e) => (e.target.style.outline = blurStyle.outline)}
-            style={inputStyle}
-          />
-
-          <input
-            type="text"
-            name="dateOfCollection"
-            placeholder="Date of sample collection (dd/mm/yyyy)"
-            value={formData.dateOfCollection}
-            onChange={handleChange}
-            onFocus={(e) => (e.target.style.outline = focusStyle.outline)}
-            onBlur={(e) => (e.target.style.outline = blurStyle.outline)}
-            style={inputStyle}
-          />
-
-          <input
-            type="text"
-            name="location"
+            name="location_of_collection"
             placeholder="Location"
-            value={formData.location}
+            value={formData.location_of_collection}
             onChange={handleChange}
             onFocus={(e) => (e.target.style.outline = focusStyle.outline)}
             onBlur={(e) => (e.target.style.outline = blurStyle.outline)}
@@ -235,7 +339,12 @@ const UploadDataset = ({ isOpen, onClose, onSave, datasetToEdit }) => {
             onChange={handleChange}
             onFocus={(e) => (e.target.style.outline = focusStyle.outline)}
             onBlur={(e) => (e.target.style.outline = blurStyle.outline)}
-            style={{ ...inputStyle, flexGrow: 1, resize: "vertical", minHeight: "80px" }}
+            style={{
+              ...inputStyle,
+              flexGrow: 1,
+              resize: "vertical",
+              minHeight: "80px",
+            }}
           />
         </div>
 

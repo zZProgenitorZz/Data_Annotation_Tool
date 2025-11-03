@@ -5,7 +5,10 @@ import selectedBox from "../../assets/selectedbox.png";
 import { getAllDatasets, updateDataset, softDeleteDataset } from "../../services/datasetService";
 import DatasetWrapper from "./DatasetCard"
 import { getAllUsers } from "../../services/authService";
-import getChangedFields from "../../components/utils";
+import getChangedFields from "../../utils/utils";
+import { uploadImagesToS3 } from "../../utils/uploadImagesToS3";
+import { createDataset } from "../../services/datasetService";
+
 
 
 const getAssignedUser = async () => {
@@ -35,9 +38,20 @@ const Overview = () => {
   const [selectedDatasets, setSelectedDatasets] = useState([]);
   const [assignedUsers, setAssignedUsers] = useState([])
 
+  //ref to store dataset components
+  const datasetRefs = useRef({});
+
+  // 🔹 Herbruikbare fetch-functie voor datasets
+  const fetchDatasets = useCallback(async () => {
+    try {
+      const data = await getAllDatasets();
+      setDatasetsState(data);
+    } catch (error) {
+      console.error("Error fetching datasets:", error);
+    }
+  }, []);
   
-  
-  
+  //useEffect fetch to get all Users
   useEffect(() => {
       const fetchUsers = async () => {
         const result = await getAssignedUser();
@@ -45,11 +59,14 @@ const Overview = () => {
       };
       fetchUsers();
   }, []);
-  
-  // Use refs to store the Dataset components so we can access their local state
-  const datasetRefs = useRef({});
 
-  // Prevent background scroll when upload is open
+   // Fetch to reload page
+  useEffect(() => {
+    fetchDatasets();
+  }, [fetchDatasets]);
+  
+ 
+  // Scrolling lock by open model
   useEffect(() => {
     document.body.style.overflow = isUploadOpen ? "hidden" : "auto";
     return () => {
@@ -57,19 +74,7 @@ const Overview = () => {
     };
   }, [isUploadOpen]);
 
-  // Fetch datasets from backend when page loads
-  useEffect(() => {
-    const fetchDatasets = async () => {
-      try {
-        const data = await getAllDatasets();
-        setDatasetsState(data);
-      } catch (error) {
-        console.error("Error fetching datasets:", error);
-      }
-    };
-
-    fetchDatasets();
-  }, []);
+ 
 
   // Enter edit mode
   const enterEditMode = () => {
@@ -111,7 +116,6 @@ const Overview = () => {
       // Loop through and update each dataset in the backend
       for (const d of updatedDatasets) {
         const original = datasetsState.find(data => data.id === d.id);
-
         const changedFields = getChangedFields(original, d);
 
         if (Object.keys(changedFields).length> 0) {
@@ -152,6 +156,37 @@ const Overview = () => {
     datasetsState.forEach((data, i) => colArr[i % 3].push(data));
     return colArr;
   }, [datasetsState]);
+
+  const handleSaveDataset = async ({ dataset, files }) => {
+    try {
+      // 1) dataset aanmaken in backend
+      const created = await createDataset(dataset);
+      const datasetId = created;
+      console.log(datasetId)
+
+      // 2) images uploaden naar S3 met helper (alleen als er files zijn)
+      if (files && files.length && datasetId) {
+        await uploadImagesToS3({
+          datasetId,
+          files,
+          onProgress: ({ imageId, pct }) => {
+            console.log("upload", imageId, pct, "%");
+          },
+        });
+      }
+
+      // 3) Datasets opnieuw ophalen (i.p.v. window.location.reload)
+      await fetchDatasets();
+
+      // 4) Modal sluiten
+      setIsUploadOpen(false);
+    } catch (error) {
+      console.error("Error saving dataset (or uploading images):", error);
+      // hier zou je evt. een error state/toast kunnen zetten
+    }
+  };
+
+   
 
   return (
     <div className="h-screen flex flex-col bg-gradient-to-b from-[#44F3C9] to-[#3F7790]">
@@ -290,29 +325,12 @@ const Overview = () => {
       <UploadDataset
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
-        onSave={(newData) => {
-          const formatted = {
-            id: newData.id || `Dataset${Math.floor(Math.random() * 10000)}`,
-            name: newData.datasetName || newData.name || "Untitled Dataset",
-            fileName: newData.fileName || "Unknown.zip",
-            status: newData.status || "Pending review",
-            total_Images: newData.images || 0,
-            completed_Images: 0,
-            createdBy: newData.createdBy || "anthony",
-            assignedTo: newData.assignedTo || newData.assignTo || ["N/A"],
-            reviewedBy: newData.reviewedBy || newData.reviewer || "N/A",
-            createdAt: newData.createdAt || new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            date_of_collection: newData.dateOfCollection || "N/A",
-            location_of_collection: newData.location || "N/A",
-            description: newData.description || "",
-          };
-          setDatasetsState((prev) => [formatted, ...prev]);
-          setIsUploadOpen(false);
-        }}
+        users={assignedUsers}
+        onSave={handleSaveDataset}
       />
     </div>
   );
 };
 
 export default Overview;
+

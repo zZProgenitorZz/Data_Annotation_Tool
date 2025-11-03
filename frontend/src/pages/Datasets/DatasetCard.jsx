@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useContext } from "react";
 import Select from "react-select";
 import { AuthContext } from "../../components/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 // Up arrow icon (at the bottom of each dataset card)
 
@@ -235,6 +236,7 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
 const DatasetWithRef = ({ dataset, editMode, localDataRef, users }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [localData, setLocalData] = useState(dataset);
+  const navigate = useNavigate();
 
 
   useEffect(() => {
@@ -256,6 +258,15 @@ const DatasetWithRef = ({ dataset, editMode, localDataRef, users }) => {
     });
   }, [localDataRef]);
 
+  const goToImages = () => {
+    //save the selecteddataset in localstorage
+    localStorage.setItem("selectedDataset", JSON.stringify(localData));
+
+    navigate("/imageList")
+  }
+
+  
+
   return (
     <div
       className="w-[320px] rounded-[14px] shadow-md overflow-hidden"
@@ -268,17 +279,34 @@ const DatasetWithRef = ({ dataset, editMode, localDataRef, users }) => {
         <Row label="Completed Images" name="completed_Images" type="number" localData={localData} editMode={editMode} handleChange={handleChange} />
 
         {!editMode && (
-          <div className="flex justify-end items-center mt-[6px] cursor-pointer hover:opacity-80 transition">
-            <span className="text-[16px] font-[500] text-[#000000] mr-[4px]">
-              Start
-            </span>
-            <img
-              src="src/assets/pencil.png"
-              alt="Edit"
-              className="w-[16px] h-[16px] mb-[2px]"
-            />
+          <div className="flex justify-between items-center mt-[6px]">
+            {/* 👇 Linker knop naar images */}
+            <button
+              onClick={goToImages}
+              className="flex items-center gap-[4px] px-[10px] py-[4px] bg-[#66B8A6] text-white text-[14px] rounded-[8px] hover:bg-[#58a090] transition"
+            >
+              <img
+                src="src/assets/gallery.png" // bijvoorbeeld een icoon
+                alt="Images"
+                className="w-[14px] h-[14px]"
+              />
+              Imagelist
+            </button>
+
+            {/* 👉 Rechter 'Start' knop */}
+            <div className="flex items-center cursor-pointer hover:opacity-80 transition">
+              <span className="text-[16px] font-[500] text-[#000000] mr-[4px]">
+                Start
+              </span>
+              <img
+                src="src/assets/pencil.png"
+                alt="Edit"
+                className="w-[16px] h-[16px] mb-[2px]"
+              />
+            </div>
           </div>
         )}
+
       </div>
 
       {isExpanded && (

@@ -83,6 +83,7 @@ class MetadataService:
         )
         restore_metadata = restore.model_dump(exclude_unset=True)
         return await self.image_repo.update_image_metadata(image_id, restore_metadata)
+    
     # restore all images
     async def restore_images(self, image_ids: list[str] | None = None, dataset_id: str | None = None, current_user: UserDto | None = None) -> int:
         

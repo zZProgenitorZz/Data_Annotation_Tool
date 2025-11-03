@@ -49,14 +49,22 @@ class CompleteRequest(BaseModel):
 @router.post("/images/complete")
 async def complete_image(body: CompleteRequest, current_user: UserDto = Depends(require_roles(["admin","reviewer","annotator"]))):
     try:
-        return await image_service.complete_upload(body.imageId, body.checksum, body.width, body.height)
+        return await image_service.complete_upload(body.imageId,current_user, body.checksum, body.width, body.height)
     except NotFoundError as e:
         raise HTTPException(404, str(e))
+    
+@router.post("/images/complete-bulk")
+async def complete_images_bulk(items: List[CompleteRequest], current_user: UserDto = Depends(require_roles(["admin","reviewer","annotator"]))):
+    try:
+        return await image_service.complete_upload_bulk([i.model_dump() for i in items], current_user)
+    except NotFoundError as e:
+        raise HTTPException(404, str(e))
+
 
 @router.get("/images/{image_id}/signed-url")
 async def get_signed_url(image_id: str, current_user: UserDto = Depends(require_roles(["admin","reviewer","annotator"]))):
     try:
-        return await image_service.get_signed_url(image_id)
+        return await image_service.get_signed_url(image_id, current_user)
     except NotFoundError as e:
         raise HTTPException(404, str(e))
 
