@@ -264,35 +264,48 @@ const Overview = () => {
           ))}
         </div>
       </div>
-
-      <div className="flex-shrink-0 px-[40px] pb-[40px]">
+      
+      {/*Footer */}
+      <div className="flex-shrink-0 px-4 md:px-[40px] pb-[40px]">
         <div className="h-[1px] bg-[#000000] opacity-20 mb-[20px]" />
-        <div className="flex justify-center gap-[200px] flex-wrap">
+
+        <div
+          className="flex justify-center items-center flex-nowrap"
+          style={{
+            // afstand tussen knoppen:
+            // - kan helemaal naar 0px op klein scherm
+            // - groeit met schermbreedt (10vw)
+            // - max 200px
+            columnGap: "clamp(0px, 10vw, 200px)",
+          }}
+        >
           {!editMode ? (
             <>
               <button
-                className="h-[50px] px-[16px] whitespace-nowrap bg-[#E5F9F7]
-                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
-                 border-[#CCCCCC] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition"
+                className="shrink-0 h-[50px] px-3 md:px-[16px] whitespace-nowrap bg-[#E5F9F7]
+                text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                border-[#CCCCCC] cursor-pointer hover:brightness-95
+                active:brightness-80 transition"
               >
                 View Actions
               </button>
+
               <button
                 onClick={() => setIsUploadOpen(true)}
-                className="h-[50px] px-[16px] whitespace-nowrap bg-[#E5F9F7]
-                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
-                 border-[#CCCCCC] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition"
+                className="shrink-0 h-[50px] px-3 md:px-[16px] whitespace-nowrap bg-[#E5F9F7]
+                text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                border-[#CCCCCC] cursor-pointer hover:brightness-95
+                active:brightness-80 transition"
               >
                 Upload Dataset
               </button>
+
               <button
                 onClick={enterEditMode}
-                className="h-[50px] px-[16px] bg-[#E5F9F7]
-                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
-                 border-[#CCCCCC] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition"
+                className="shrink-0 h-[50px] px-3 md:px-[16px] bg-[#E5F9F7]
+                text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                border-[#CCCCCC] cursor-pointer hover:brightness-95
+                active:brightness-80 transition whitespace-nowrap"
               >
                 Edit
               </button>
@@ -301,29 +314,31 @@ const Overview = () => {
             <>
               <button
                 onClick={cancelEdit}
-                className="h-[50px] px-[16px] bg-[#E5F9F7]
-                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
-                 border-[#CCCCCC] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition"
+                className="shrink-0 h-[50px] px-3 md:px-[16px] bg-[#E5F9F7]
+                text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                border-[#CCCCCC] cursor-pointer hover:brightness-95
+                active:brightness-80 transition"
               >
                 Cancel
               </button>
+
               <button
                 onClick={handleDeleteSelected}
                 disabled={selectedDatasets.length === 0}
-                className="h-[50px] px-[16px] bg-[#FCA5A5]
-                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
-                 border-[#CC3333] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="shrink-0 h-[50px] px-3 md:px-[16px] bg-[#FCA5A5]
+                text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                border-[#CC3333] cursor-pointer hover:brightness-95
+                active:brightness-80 transition disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
               >
                 Delete
               </button>
+
               <button
                 onClick={saveEdit}
-                className="h-[50px] px-[16px] bg-[#B3DCD7]
-                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
-                 border-[#91d0c9ff] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition"
+                className="shrink-0 h-[50px] px-3 md:px-[16px] bg-[#B3DCD7]
+                text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                border-[#91d0c9ff] cursor-pointer hover:brightness-95
+                active:brightness-80 transition whitespace-nowrap"
               >
                 Save
               </button>
@@ -331,6 +346,7 @@ const Overview = () => {
           )}
         </div>
       </div>
+
 
       <UploadDataset
         isOpen={isUploadOpen}
