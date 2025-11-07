@@ -53,3 +53,24 @@ def require_roles(allowed_roles: List[str]):
 def is_guest_user(user: UserDto) -> bool:
     """Returns True if user is a guest"""
     return getattr(user, 'is_guest', False)
+
+
+def require_guest_user():
+    async def _inner(current_user = Depends(get_user_or_guest)):
+        if not is_guest_user(current_user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only guest users can access this endpoint"
+            )
+        return current_user
+    return _inner
+
+def require_normal_user():
+    async def _inner(current_user = Depends(get_user_or_guest)):
+        if is_guest_user(current_user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Guest users cannot access this endpoint"
+            )
+        return current_user
+    return _inner

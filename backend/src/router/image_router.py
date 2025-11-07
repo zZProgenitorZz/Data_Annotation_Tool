@@ -1,17 +1,16 @@
-from backend.src.services.dataset_service import DatasetService
+
 from backend.src.models.user import UserDto
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Response
 from backend.src.helpers.helpers import NotFoundError
 from backend.src.services.imageMetadata_service import MetadataService
 from backend.src.services.image_service import ImageService
-from backend.src.models.imageMetadata import ImageMetadataDto, ImageMetadata
-from backend.src.helpers.auth_helper import require_roles, is_guest_user
+from backend.src.models.imageMetadata import ImageMetadataDto
+from backend.src.helpers.auth_helper import require_roles, is_guest_user, require_guest_user, require_normal_user
 from backend.src.services.guest_session_service import guest_session_service
 from pydantic import BaseModel, Field, ConfigDict
 from backend.core.aws import S3_BUCKET, S3_PREFIX, s3
 from datetime import datetime, timezone
-import uuid
 from backend.src.repositories.Image_metadata_repo import ImageMetadataRepo
 
 router = APIRouter()
@@ -32,7 +31,7 @@ class PresignRequest(BaseModel):
     files: List[PresignFile]
 
 @router.post("/{dataset_id}/images/presign")
-async def presign_images(dataset_id: str, body: PresignRequest, current_user: UserDto = Depends(require_roles(["admin","reviewer","annotator"]))):
+async def presign_images(dataset_id: str, body: PresignRequest, current_user: UserDto = Depends(require_normal_user)):
     try:
         # If you want guests to upload too, call a guest-specific flow here
         return await image_service.presign_upload(dataset_id, [f.model_dump() for f in body.files], current_user)
@@ -114,4 +113,39 @@ async def hard_delete_dataset_images(dataset_id: str, current_user: UserDto = De
         return await image_service.hard_delete_dataset_images(dataset_id, current_user)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    
+
+# For guest users
+
+@router.post("/guest-datasets/{dataset_id}/images")
+async def upload_guest_images(
+    dataset_id: str,
+    files: List[UploadFile] = File(...),
+    current_user = Depends(require_guest_user()),
+):
+    try:
+        return await guest_session_service.add_images_to_dataset(
+            guest_id=current_user.id,
+            dataset_id=dataset_id,
+            files=files,
+        )
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+
+@router.get("/guest-images/{image_id}")
+async def get_guest_image(
+    image_id: str,
+    current_user = Depends(require_guest_user),
+):
+    try:
+        if is_guest_user(current_user):
+            data, content_type = guest_session_service.get_image(current_user.id, image_id)
+            return Response(content=data, media_type=content_type)
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    
+
+
 

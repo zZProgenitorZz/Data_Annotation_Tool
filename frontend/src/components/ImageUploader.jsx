@@ -1,6 +1,8 @@
 // src/components/UploadImages.jsx
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useContext } from "react";
 import { uploadImagesToS3 } from "../utils/uploadImagesToS3"; //  nieuwe helper import
+import { uploadGuestImages } from "../services/ImageService";
+import { AuthContext } from "./AuthContext";
 
 // type is "file" of "folder"
 export default function UploadImages({ datasetId, onDone, type = "both" }) {
@@ -14,6 +16,8 @@ export default function UploadImages({ datasetId, onDone, type = "both" }) {
   const showFileButton = type === "file" || type === "both";
   const showFolderButton = type === "folder" || type === "both";
 
+  const {authType, loading} = useContext(AuthContext)
+
   const onSelect = (e) => {
     if (!e.target.files) return;
 
@@ -26,21 +30,37 @@ export default function UploadImages({ datasetId, onDone, type = "both" }) {
   };
 
   const startUpload = async () => {
-    if (!files.length) return;
+    // Niks doen als auth nog aan het laden is
+    if (loading) return;
+
+    // Geen files → geen upload
+    if (!files || files.length === 0) return;
+
+    // Geen datasetId → fout melden
+    if (!datasetId) {
+      setError("Geen dataset geselecteerd om naar te uploaden.");
+      return;
+    }
+
     setBusy(true);
     setError("");
 
     try {
-      await uploadImagesToS3({
-        datasetId,
-        files,
-        onProgress: ({ imageId, pct }) => {
-          setProgress((p) => ({ ...p, [imageId]: pct }));
-        },
-      });
+      if (authType === "user") {
+        await uploadImagesToS3({
+          datasetId,
+          files,
+          onProgress: ({ imageId, pct }) => {
+            setProgress((p) => ({ ...p, [imageId]: pct }));
+          },
+        });
+      } else if (authType === "guest") {
+        await uploadGuestImages(datasetId, files);
+      }
 
       setFiles([]);
       if (onDone) onDone();
+      
     } catch (e) {
       console.error(e);
       setError(String(e.message || e));
@@ -48,6 +68,7 @@ export default function UploadImages({ datasetId, onDone, type = "both" }) {
       setBusy(false);
     }
   };
+
 
   // Overall progress
   const values = Object.values(progress);

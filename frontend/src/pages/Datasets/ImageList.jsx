@@ -25,31 +25,26 @@ const ImageList = () => {
   }, []);
 
   // fetch images once dataset is known
+  const fetchImages = async () => {
+    if (!dataset) return;
+    try {
+      const result = await listImages(dataset.id);
+      setImageList(result);
+    } catch (err) {
+      console.error("Failed to fetch images:", err);
+    }
+  };
+
+  // haal eenmalig op als dataset bekend is
   useEffect(() => {
     if (!dataset) return;
+    fetchImages();
+  }, [dataset]);
 
-    const fetchImages = async () => {
-      try{
-        const result = await listImages(dataset.id);
-        setImageList(result);
-      } catch (err){
-        console.error("Failed to fetch images:", err)
-      }
-    };
-    fetchImages()
-  }, [dataset])
-
-
-  const deleteImage = async () => {
-    
-    const imageId = "69088138637b58194f477bb9"
-
-    //hard = await hardDeleteImage("6904b11c9af4b6414ef22540")
-    //soft = softDeleteImage("68fb696d335f4ba4bc688236", imageId)
-    
-   
+  const handleUploaded = async () => {
+    await fetchImages();
   }
-  
+
 
 
     
@@ -77,6 +72,7 @@ const ImageList = () => {
       <div className ="flex flex-1 items-center justify-center mt-[1px]">
         <UploadImages
         datasetId = {dataset?.id}
+        onDone={handleUploaded}
         type = {"file"}/>
       </div>
       
@@ -136,33 +132,33 @@ const ImageList = () => {
                 return (
                   <li
                     key={key}
-                    className="grid grid-cols-[1fr_140px] items-center bg-white hover:bg-gray-50 transition-colors"
+                    className="grid grid-cols-[minmax(0,1fr)_140px] items-center bg-white hover:bg-gray-50 transition-colors py-3"
                   >
                     {/* Filename cell */}
-                    <div className="py-3 px-4">
-                      <span className="text-gray-900 truncate inline-block max-w-full">
+                    <div className="px-4 min-w-0">
+                      <span className="block truncate text-gray-900">
                         {fileName}
                       </span>
                     </div>
 
                     {/* Status indicator cell */}
-                    <div className="py-3 px-4 flex items-center justify-center">
+                    <div className="px-4 flex items-center justify-center">
                       <span
                         style={{
                           display: "inline-block",
                           width: "14px",
                           height: "14px",
                           borderRadius: "9999px",
-                          backgroundColor: annotated ? "#22c55e" /* green-500 */ : "#d1d5db" /* gray-300 */,
-                          border: `1px solid ${annotated ? "#16a34a" /* green-600 */ : "#6b7280" /* gray-500 */}`,
+                          backgroundColor: annotated ? "#22c55e" : "#d1d5db",
+                          border: `1px solid ${annotated ? "#16a34a" : "#6b7280"}`,
                           verticalAlign: "middle",
                         }}
                         title={annotated ? "Annotated" : "Not annotated"}
                         aria-label={annotated ? "Annotated" : "Not annotated"}
                       />
-
                     </div>
                   </li>
+
                 );
               })}
             </ul>

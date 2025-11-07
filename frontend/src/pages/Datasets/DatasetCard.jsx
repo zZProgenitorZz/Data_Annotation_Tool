@@ -67,8 +67,10 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
     "completed_Images"
   ];
 
-  if (currentUser.role === "annotator") {
-    baseNonEditable.push("assignedTo");
+  if (!loading){
+    if (currentUser.role === "annotator") {
+      baseNonEditable.push("assignedTo");
+    } 
   }
   const nonEditable = baseNonEditable.includes(name);
 
@@ -185,6 +187,19 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
         </div>
       );
     }
+    if (name === "date_of_collection") {
+      return (
+        <div className="grid grid-cols-[120px_1fr] gap-x-[8px] mb-[6px] items-center">
+          <div className="font-[600] text-[16px] text-[#000000]">{label}:</div>
+          <input
+            type="date"
+            value={value}
+            onChange={(e) => handleChange(name, e.target.value)}
+            style={boxStyle}
+          />
+      </div>
+      )
+    }
 
     return (
       <div className="grid grid-cols-[120px_1fr] gap-x-[8px] mb-[6px] items-center">
@@ -223,8 +238,8 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
 
           {name === "assignedTo" && Array.isArray(value)
             ? getUserNames(value).join(", ")
-            : name === "createdAt" || name === "updatedAt"
-            ? new Date(value).toLocaleDateString("en-CA")
+            : name === "createdAt" || name === "updatedAt" || name === "date_of_collection"
+            ? new Date(value).toLocaleDateString("nl-NL")
             : value}
         </div>
       )}
@@ -280,7 +295,7 @@ const DatasetWithRef = ({ dataset, editMode, localDataRef, users }) => {
 
         {!editMode && (
           <div className="flex justify-between items-center mt-[6px]">
-            {/* 👇 Linker knop naar images */}
+            {/* Linker knop naar images */}
             <button
               onClick={goToImages}
               className="flex items-center gap-[4px] px-[10px] py-[4px] bg-[#66B8A6] text-white text-[14px] rounded-[8px] hover:bg-[#58a090] transition"
@@ -293,7 +308,7 @@ const DatasetWithRef = ({ dataset, editMode, localDataRef, users }) => {
               Imagelist
             </button>
 
-            {/* 👉 Rechter 'Start' knop */}
+            {/*  Rechter 'Start' knop */}
             <div className="flex items-center cursor-pointer hover:opacity-80 transition">
               <span className="text-[16px] font-[500] text-[#000000] mr-[4px]">
                 Start

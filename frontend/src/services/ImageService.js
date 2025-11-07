@@ -71,13 +71,61 @@ export async function uploadToS3(putUrl, file, headers = {}) {
 }
 
 
-export async function softDeleteImage(dataset_id, image_id) {
-  const {data} = await api.delete(`/image/${dataset_id}/soft`, image_id);
-  return data;
-}
+
 
 export async function hardDeleteImage(image_id) {
   const {data} = await api.delete(`/image/${image_id}/hard`);
   return data
 }
 
+export async function hardDeleteDatasetImages(dataset_id){
+  const {data} = await api.delete(`/image/dataset/${dataset_id}/hard`)
+  return data;
+}
+
+
+
+
+export async function softDeleteImages(datasetId, imageIds) {
+  // Alleen params meesturen als we specifieke images willen deleten
+  const config =
+    imageIds && imageIds.length
+      ? { params: { image_id: imageIds } } // => ?image_id=a&image_id=b&...
+      : {};
+
+  const { data } = await api.delete(`/image/${datasetId}/soft`, config);
+  return data; 
+}
+
+export async function softDeleteImage(datasetId, imageId) {
+  return softDeleteImages(datasetId, [imageId]);
+}
+
+
+export async function softDeleteDatasetImages(datasetId) {
+  return softDeleteImages(datasetId, null);
+}
+
+
+
+
+// For guest User
+
+
+export async function uploadGuestImages(datasetId, files) {
+  if (!files || files.length === 0) return [];
+
+  const formData = new FormData();
+  files.forEach((f) => formData.append("files", f)); // "files" moet matchen met je FastAPI parameternaam
+ 
+
+  const res = await api.post(`/image/guest-datasets/${datasetId}/images`, formData,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    }
+  );
+
+  return res.data; // backend kan bijv. de image-metadata teruggeven
+}

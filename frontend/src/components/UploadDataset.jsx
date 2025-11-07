@@ -3,6 +3,8 @@ import Select from "react-select";
 import { AuthContext } from "./AuthContext";
 
 const UploadDataset = ({ isOpen, onClose, users, onSave, datasetToEdit }) => {
+const [errorMessage, setErrorMessage] = useState("");
+
   const initialFormData = {
     name: "",
     status: "",
@@ -89,10 +91,21 @@ const UploadDataset = ({ isOpen, onClose, users, onSave, datasetToEdit }) => {
     setFormData((prev) => ({
       ...prev,
       total_Images: 0,
+      
     }));
   };
 
   const handleSave = () => {
+    if (!formData.date_of_collection || formData.date_of_collection.trim() === "") {
+    setErrorMessage("Please fill in the date of sample collection.");
+    return;
+    }
+    if (!formData.name || formData.name.trim() === ""){
+    setErrorMessage("Please fill in the dataset name");
+    return;
+    }
+    
+    
     onSave({
       dataset: {
         ...formData,
@@ -243,6 +256,7 @@ const UploadDataset = ({ isOpen, onClose, users, onSave, datasetToEdit }) => {
             onFocus={(e) => (e.target.style.outline = focusStyle.outline)}
             onBlur={(e) => (e.target.style.outline = blurStyle.outline)}
             style={inputStyle}
+            required
           />
 
           {/* Multi-select assignedTo */}
@@ -310,11 +324,12 @@ const UploadDataset = ({ isOpen, onClose, users, onSave, datasetToEdit }) => {
 
           {/* date_of_collection */}
           <input
-            type="text"
+            type="date"
             name="date_of_collection"
-            placeholder="Date of sample collection (yyyy/mm/dd)"
+            placeholder="Date of sample collection (yyyy-mm-dd)"
             value={formData.date_of_collection}
             onChange={handleChange}
+            
             onFocus={(e) => (e.target.style.outline = focusStyle.outline)}
             onBlur={(e) => (e.target.style.outline = blurStyle.outline)}
             style={inputStyle}
@@ -347,6 +362,13 @@ const UploadDataset = ({ isOpen, onClose, users, onSave, datasetToEdit }) => {
             }}
           />
         </div>
+        <div className="h-[25px]  flex items-center justify-center">
+            {errorMessage && (
+              <p className="text-[#FF2C2C] text-[13px] leading-none" style={{ color: '#f93030ff', fontWeight: 500 ,  textShadow: '1px 1px 2px rgba(0,0,0,0.2)'}}>
+                {errorMessage}
+              </p>
+            )}
+          </div>
 
         {/* Footer */}
         <div
@@ -359,7 +381,12 @@ const UploadDataset = ({ isOpen, onClose, users, onSave, datasetToEdit }) => {
           }}
         >
           <button
-            onClick={onClose}
+            onClick={() => {
+              setErrorMessage("");   // 1) error leegmaken
+              if (onClose) {
+                onClose();           // 2) modal sluiten (alleen als onClose bestaat)
+              }
+            }}
             style={{
               padding: "12px 26px",
               borderRadius: "10px",

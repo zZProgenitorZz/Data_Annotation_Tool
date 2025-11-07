@@ -188,7 +188,7 @@ class ImageService:
             raise NotFoundError(f"Image metadata with id {image_id} not found")
         if metadata.is_active:
             return False
-        print (metadata)
+        
 
         # NEW: delete from S3 if we have a key (instead of local os.remove)
         if metadata.s3Key:

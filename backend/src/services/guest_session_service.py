@@ -1,5 +1,5 @@
 from backend.src.models.user import UserDto
-import uuid
+import uuid, base64, io
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta, timezone
 from backend.src.models.annotation2 import ImageAnnotations, Annotation
@@ -223,59 +223,58 @@ class GuestSessionService:
 
     # basepath for image location
     
-    def add_images_to_dataset(self, guest_id: str, dataset_id: str, image_files: List[str]) -> List[dict]:
-        """Voeg meerdere images toe aan een dataset."""
-        session = self._get_session(guest_id)
+    async def add_images_to_dataset(
+            self,
+            guest_id: str,
+            dataset_id: str,
+            files: list,   # List[UploadFile]
+        ) -> list[dict]:
+            session = self._get_session(guest_id)
 
-        if dataset_id not in session["datasets"]:
-            raise ValueError(f"Dataset {dataset_id} not found for guest {guest_id}")
+            if dataset_id not in session["datasets"]:
+                raise ValueError(f"Dataset {dataset_id} not found for guest {guest_id}")
 
-        inserted_images = []
-        for file_name in image_files:
-            image_metadata = self.add_image(guest_id, dataset_id, file_name)
-            inserted_images.append(image_metadata)
+            inserted_images: list[dict] = []
 
-        # update image count
-        dataset = session["datasets"][dataset_id]
-        dataset["total_Images"] += len(inserted_images)
-        dataset["updatedAt"] = datetime.now(timezone.utc)
+            for file in files:
+                content = await file.read()  # bytes
 
-        logger.debug(f"Guest {guest_id} added {len(inserted_images)} images to dataset {dataset_id}")
-        return inserted_images
+                image_id = f"guest_{uuid.uuid4()}"
+
+                # width/height bepalen (optioneel)
+                try:
+                    with Image.open(io.BytesIO(content)) as img:
+                        width, height = img.size
+                        file_type = (img.format or "bin").lower()
+                except Exception:
+                    width = height = 0
+                    file_type = "bin"
+
+                metadata = {
+                    "id": image_id,
+                    "datasetId": dataset_id,
+                    "fileName": file.filename,
+                    "width": width,
+                    "height": height,
+                    "fileType": file_type,
+                    "contentType": file.content_type,
+                    "sizeBytes": len(content),
+                    "uploadedAt": datetime.now(timezone.utc),
+                    "is_active": True,
+                    # hier slaan we de daadwerkelijke bytes op, gecodeerd
+                    "data": base64.b64encode(content).decode("ascii"),
+                }
+
+                session["images"][image_id] = metadata
+                inserted_images.append(metadata)
+
+            dataset = session["datasets"][dataset_id]
+            dataset["total_Images"] = dataset.get("total_Images", 0) + len(inserted_images)
+            dataset["updatedAt"] = datetime.now(timezone.utc)
+
+            return inserted_images
 
 
-    def add_image(self, guest_id: str, dataset_id: str, file_name: str) -> dict:
-
-
-        full_path = os.path.join(BASE_PATH, file_name)
-        """Voeg één image toe aan dataset."""
-        session = self._get_session(guest_id)
-
-        image_id = f"guest_image_{len(session['images']) + 1}"
-
-        try:
-            with Image.open(full_path) as img:
-                width, height = img.size
-                file_type = img.format.lower()
-        except Exception as e:
-            raise ValueError(f"Cannot open image {file_name}: {e}")
-
-        metadata = {
-            "id": image_id,
-            "datasetId": dataset_id,
-            "fileName": file_name,
-            "folderPath": BASE_PATH,
-            "width": width,
-            "height": height,
-            "fileType": file_type,
-            "uploadedBy": guest_id,
-            "uploadedAt": datetime.now(timezone.utc),
-            "is_active": True,
-        }
-
-        session["images"][image_id] = metadata
-        logger.debug(f"Guest {guest_id} added image {image_id} to dataset {dataset_id}")
-        return metadata
     
 
     def get_images_by_dataset(self, guest_id: str, dataset_id: str) -> List[dict]:
@@ -286,11 +285,17 @@ class GuestSessionService:
             img for img in session["images"].values()
             if img["datasetId"] == dataset_id and img.get("is_active", True)
         ]
-
         if not images:
             return []
-
         return images
+    
+    def get_image(self, guest_id: str, image_id: str) -> tuple[bytes, str]:
+        session = self._get_session(guest_id)
+        img = session["images"].get(image_id)
+        if not img:
+            raise ValueError("Image not found")
+        data = base64.b64decode(img["data"])
+        return data, img["contentType"]
     
     
     def delete_images(self, guest_id: str, dataset_id: str, image_ids: list[str]) -> int:
