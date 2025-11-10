@@ -9,6 +9,7 @@ import getChangedFields from "../../utils/utils";
 import { uploadImagesToS3 } from "../../utils/uploadImagesToS3";
 import { createDataset } from "../../services/datasetService";
 import { soft_Delete_Dataset, hard_Delete_Dataset } from "../../utils/deleteDataset";
+import { softDeleteDataset } from "../../services/datasetService";
 import { AuthContext } from "../../components/AuthContext";
 import { uploadGuestImages } from "../../services/ImageService";
 import Header from "../../components/Header";
@@ -154,8 +155,13 @@ const Overview = () => {
     try {
       // Call softDeleteDataset for each selected dataset
       for (const datasetId of selectedDatasets) {
+        if (!loading && authType === "user") {
         await soft_Delete_Dataset(datasetId);
-        await hard_Delete_Dataset(datasetId)
+        await hard_Delete_Dataset(datasetId);
+        }
+        if (!loading && authType === "guest") {
+          await softDeleteDataset(datasetId)
+        }
       }
 
       // Remove from local state

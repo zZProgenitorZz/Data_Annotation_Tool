@@ -193,8 +193,15 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
           <div className="font-[600] text-[16px] text-[#000000]">{label}:</div>
           <input
             type="date"
-            value={value}
-            onChange={(e) => handleChange(name, e.target.value)}
+            value={value }
+            onChange={(e) => {
+              const newValue = e.target.value;
+
+              if (!newValue) {
+                return;
+              }
+              handleChange(name, newValue);
+            }}
             style={boxStyle}
           />
       </div>
