@@ -2,6 +2,7 @@ import React from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Login from "./pages/Login/Login.jsx";
 import Overview from "./pages/Datasets/Overview.jsx";
+import AnnotationPage from "./pages/Annotation/AnnotationPage.jsx";
 
 function App() {
   return (
@@ -10,7 +11,7 @@ function App() {
 
         <Route path="/" element={<Login />} />
         <Route path="/overview" element={<Overview />} />
-
+        <Route path="/annotation/:datasetName" element={<AnnotationPage />} />
       </Routes>
     </BrowserRouter>
   );

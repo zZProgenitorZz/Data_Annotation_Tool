@@ -65,21 +65,14 @@ const Overview = () => {
     );
   };
 
-  // ✅ When a field is edited inside a dataset card
-  const handleFieldChange = (id, field, value) => {
+  const handleFieldChange = useCallback((id, field, value) => {
     setDraftDatasets((prev) => {
-      // Make a shallow copy of the array
-      const copy = [...prev];
-      // Find the dataset being edited
-      const index = copy.findIndex((d) => d.id === id);
-      if (index === -1) return prev;
-
-      // Update only that dataset’s field
-      copy[index] = { ...copy[index], [field]: value };
-      return copy;
+      const newDrafts = prev.map((d) =>
+        d.id === id ? { ...d, [field]: value } : d
+      );
+      return [...newDrafts]; 
     });
-  };
-
+  }, []);
 
   const displayed = useMemo(
     () => (editMode ? draftDatasets : datasetsState),
