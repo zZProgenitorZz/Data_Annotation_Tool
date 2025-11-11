@@ -1,7 +1,7 @@
 
-from backend.src.models.user import UserDto, User, UserUpdate
+from backend.src.models.user import User
 from backend.src.helpers.helpers import PyObjectId
-from backend.src.db.connection import db
+from backend.core.db import db
 
 
 class UserRepo:

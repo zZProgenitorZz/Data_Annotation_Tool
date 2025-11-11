@@ -1,6 +1,6 @@
 import asyncio
 
-from backend.src.models.user import User, UserDto, UserUpdate
+from backend.src.models.user import User, UserUpdate
 from backend.src.repositories.user_repo import UserRepo
 from backend.src.repositories.dataset_repo import DatasetRepo
 from backend.src.models.dataset import Dataset

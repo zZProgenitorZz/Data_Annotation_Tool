@@ -1,41 +1,46 @@
-import React, { useState } from "react";
+import React, { useState, useContext} from "react";
 import ForgotPassword from "./ForgotPassword";
 import CheckEmail from "./CheckEmail";
 import PasswordChanged from "./PasswordChanged";
 import { useNavigate } from "react-router-dom";
 import { login, getCurrentUser, guestLogin, getGuestInfo} from "../../services/authService";
+import { AuthContext } from "../../components/AuthContext";
+
 
 function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [user, setUser] = useState(null);
   const [view, setView] = useState("login");
   const [errorMessage, setErrorMessage] = useState("");
+  const {setCurrentUser, setAuthType} = useContext(AuthContext)
+  
 
   const navigate = useNavigate();
 
   // 2. Handler functions (from the AI-generated code)
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  try {
-    setErrorMessage("")
+    
+    e.preventDefault();
+    try {
+      setErrorMessage("")
+      // Login via FastAPI
+      await login(username, password);
 
-    // Login via FastAPI
-    await login(username, password);
+      // Get logged-in user info
+      const userData = await getCurrentUser();
+      
+      setCurrentUser(userData);
+      setAuthType("user")
+      
 
-    // Get logged-in user info
-    const userData = await getCurrentUser();
-    setUser(userData);
+      // Example: Navigate to overview page after login
+      navigate("/overview");
 
-    console.log(user)
-    // Example: Navigate to overview page after login
-    navigate("/overview");
-
-  } catch (error) {
-    console.error("Login failed:", error);
-    setErrorMessage("Incorrect username or password");
-  } 
-};
+    } catch (error) {
+      console.error("Login failed:", error);
+      setErrorMessage("Incorrect username or password");
+    } 
+  };
 
 
   
@@ -47,12 +52,13 @@ function Login() {
   const handleContinueAsGuest = async (e) => {
     e.preventDefault();
     try{
+      //Login via Fastapi
       await guestLogin();
-
       const user = await getGuestInfo();
-      setUser(user)
 
-      console.log(user)
+      setCurrentUser(user);
+      setAuthType("guest")
+
 
       navigate("/overview");
 

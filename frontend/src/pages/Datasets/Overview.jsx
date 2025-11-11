@@ -1,17 +1,90 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
-import Dataset, { initialDatasets } from "../../components/Dataset";
+import { useState, useEffect, useMemo, useCallback, useRef, useContext } from "react";
 import UploadDataset from "../../components/UploadDataset";
 import selectionBox from "../../assets/selectionbox.png";
 import selectedBox from "../../assets/selectedbox.png";
+import { getAllDatasets, updateDataset } from "../../services/datasetService";
+import DatasetWrapper from "./DatasetCard"
+import { getAllUsers } from "../../services/authService";
+import getChangedFields from "../../utils/utils";
+import { uploadImagesToS3 } from "../../utils/uploadImagesToS3";
+import { createDataset } from "../../services/datasetService";
+import { soft_Delete_Dataset, hard_Delete_Dataset } from "../../utils/deleteDataset";
+import { softDeleteDataset } from "../../services/datasetService";
+import { AuthContext } from "../../components/AuthContext";
+import { uploadGuestImages } from "../../services/ImageService";
+import Header from "../../components/Header";
 
+
+const getAssignedUser = async () => {
+  try{
+    const allUsers = await getAllUsers()
+    //filter out admins
+    const nonAdminUsers = allUsers.filter((u) => u.role !== "admin")
+
+    const assignedUsers = nonAdminUsers.map((u) => ({
+      id: u.id,
+      username: u.username,
+      role: u.role
+    }))
+
+    return assignedUsers
+    
+  } catch(error) {
+    console.error("Error finding or filtering Users", error);
+  }
+}
+
+// Main Overview Component
 const Overview = () => {
-  const [datasetsState, setDatasetsState] = useState(initialDatasets);
+  const [datasetsState, setDatasetsState] = useState([]);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [draftDatasets, setDraftDatasets] = useState(initialDatasets);
   const [selectedDatasets, setSelectedDatasets] = useState([]);
+  const [assignedUsers, setAssignedUsers] = useState([])
+  const { currentUser, authType, loading} = useContext(AuthContext)
 
-  // Prevent background scroll when upload is open
+
+  //ref to store dataset components
+  const datasetRefs = useRef({});
+
+  // 🔹 Herbruikbare fetch-functie voor datasets
+  const fetchDatasets = useCallback(async () => {
+    try {
+      const data = await getAllDatasets();
+      setDatasetsState(data);
+    } catch (error) {
+      console.error("Error fetching datasets:", error);
+    }
+  }, []);
+  
+  //useEffect fetch to get all Users
+
+  useEffect(() => {
+    if (loading) return;
+    if (authType === "guest") {
+      setAssignedUsers([]);
+      return;
+    }
+      const fetchUsers = async () => {
+        try{
+          const result = await getAssignedUser();
+          setAssignedUsers(result || []);
+        } catch (err) {
+          console.error("Error fetching assigned users:", err)
+          setAssignedUsers([]);
+        }
+      };
+      fetchUsers();
+  }, [loading, authType]);
+    
+
+   // Fetch to reload page
+  useEffect(() => {
+    fetchDatasets();
+  }, [fetchDatasets]);
+  
+ 
+  // Scrolling lock by open model
   useEffect(() => {
     document.body.style.overflow = isUploadOpen ? "hidden" : "auto";
     return () => {
@@ -19,97 +92,145 @@ const Overview = () => {
     };
   }, [isUploadOpen]);
 
+ 
+
   // Enter edit mode
   const enterEditMode = () => {
-    setDraftDatasets(datasetsState.map((d) => ({ ...d })));
     setEditMode(true);
     setSelectedDatasets([]);
   };
 
-  // Cancel edit
+  // Toggle selection when in edit mode
+  const toggleSelectDataset = useCallback((id) => {
+    setSelectedDatasets((prev) =>
+      prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]
+    );
+  }, []);
+
+  // Cancel edit - just exit edit mode, components will reset from their useEffect
   const cancelEdit = () => {
-    setDraftDatasets(datasetsState.map((d) => ({ ...d })));
     setEditMode(false);
     setSelectedDatasets([]);
+    // Force re-render by creating new object references
+    setDatasetsState(prev => prev.map(d => ({...d})));
   };
 
-  // Save edited datasets
-  const saveEdit = () => {
-    const updated = draftDatasets.map((d) => ({
-      ...d,
-      lastUpdated: new Date().toLocaleString(),
-    }));
-    setDatasetsState(updated);
-    setEditMode(false);
+  // Save edited datasets - collect local state from all Dataset components
+  const saveEdit = async () => {
+    try {
+      const updatedDatasets = [];
+      
+      // Collect all the local state from Dataset components
+      for (const dataset of datasetsState) {
+        const ref = datasetRefs.current[dataset.id];
+        if (ref && ref.getLocalData) {
+          updatedDatasets.push(ref.getLocalData());
+        } else {
+          updatedDatasets.push(dataset);
+        }
+      
+      }
+
+      // Loop through and update each dataset in the backend
+      for (const d of updatedDatasets) {
+        const original = datasetsState.find(data => data.id === d.id);
+        const changedFields = getChangedFields(original, d);
+
+        if (Object.keys(changedFields).length> 0) {
+        await updateDataset(d.id, {...changedFields });
+        }
+      }
+
+      // Update local state after all updates are done
+      setDatasetsState(updatedDatasets);
+      setEditMode(false);
+      setSelectedDatasets([]);
+    } catch (error) {
+      console.error("Error saving datasets:", error);
+    }
   };
 
   // Delete selected datasets
-  const handleDeleteSelected = () => {
-    setDatasetsState((prev) =>
-      prev.filter((d) => !selectedDatasets.includes(d.id))
-    );
-    setDraftDatasets((prev) =>
-      prev.filter((d) => !selectedDatasets.includes(d.id))
-    );
-    setSelectedDatasets([]);
-    setEditMode(false);
-  };
+  const handleDeleteSelected = async () => {
+    try {
+      // Call softDeleteDataset for each selected dataset
+      for (const datasetId of selectedDatasets) {
+        if (!loading && authType === "user") {
+        await soft_Delete_Dataset(datasetId);
+        await hard_Delete_Dataset(datasetId);
+        }
+        if (!loading && authType === "guest") {
+          await softDeleteDataset(datasetId)
+        }
+      }
 
-  // Toggle selection when in edit mode
-  const toggleSelectDataset = (id) => {
-    if (!editMode) return;
-    setSelectedDatasets((prev) =>
-      prev.includes(id)
-        ? prev.filter((sid) => sid !== id)
-        : [...prev, id]
-    );
-  };
-
-  const handleFieldChange = useCallback((id, field, value) => {
-    setDraftDatasets((prev) => {
-      const newDrafts = prev.map((d) =>
-        d.id === id ? { ...d, [field]: value } : d
+      // Remove from local state
+      setDatasetsState((prev) =>
+        prev.filter((d) => !selectedDatasets.includes(d.id))
       );
-      return [...newDrafts]; 
-    });
-  }, []);
-
-  const displayed = useMemo(
-    () => (editMode ? draftDatasets : datasetsState),
-    [editMode, draftDatasets, datasetsState]
-  );
+      setSelectedDatasets([]);
+      setEditMode(false);
+    } catch (error) {
+      console.error("Error deleting datasets:", error);
+    }
+  };
 
   const columns = useMemo(() => {
     const colArr = [[], [], []];
-    displayed.forEach((data, i) => colArr[i % 3].push(data));
+    datasetsState.forEach((data, i) => colArr[i % 3].push(data));
     return colArr;
-  }, [displayed]);
+  }, [datasetsState]);
+
+  const handleSaveDataset = async ({ dataset, files }) => {
+    try {
+      // 1) dataset aanmaken in backend
+      const created = await createDataset(dataset);
+      const datasetId = created;
+     
+
+      if (!loading && authType === "user") {
+        // 2) images uploaden naar S3 met helper (alleen als er files zijn)
+        if (files && files.length && datasetId) {
+          await uploadImagesToS3({
+            datasetId,
+            files,
+            onProgress: ({ imageId, pct }) => {
+              console.log("upload", imageId, pct, "%");
+            },
+          });
+        }
+      }
+
+      if (!loading && authType === "guest") {
+        if (files && files.length && datasetId) {
+          await uploadGuestImages(datasetId, files);
+        }
+      }
+      // 3) Datasets opnieuw ophalen (i.p.v. window.location.reload)
+      await fetchDatasets();
+
+      // 4) Modal sluiten
+      setIsUploadOpen(false);
+    } catch (error) {
+      console.error("Error saving dataset (or uploading images):", error);
+      // hier zou je evt. een error state/toast kunnen zetten
+    }
+  };
+
+   
 
   return (
     <div className="h-screen flex flex-col bg-gradient-to-b from-[#44F3C9] to-[#3F7790]">
       {/* Header */}
-      <div
-        className="relative flex items-end justify-center flex-shrink-0"
-        style={{ height: "70px", backgroundColor: "rgba(255,255,255,0.31)" }}
-      >
-        <img
-          src="src/assets/aidxlogo.png"
-          alt="AiDx Medical Logo"
-          className="absolute left-[0px] top-[2px] bottom-[0px] pl-[3px] h-[40px]"
-        />
-        <h1
-          className="text-[#000000] text-[30px] font-[600] italic mb-[-2px]"
-          style={{ textShadow: "0px 1px 0px rgba(0,0,0,0.15)" }}
-        >
-          Datasets
-        </h1>
-      </div>
+      <Header title="Datasets" currentUser={currentUser}/>
 
       <div className="flex-1 overflow-auto px-[40px] pt-[40px] datasets-scroll">
         <div className="flex justify-center gap-[24px] items-start flex-wrap">
-          {columns.map((col, i) => (
-            <div key={i} className="flex flex-col gap-[24px]">
-              {col.map((data) => (
+          {columns.map((col, colIndex) => (
+            <div key={colIndex} className="flex flex-col gap-[24px]">
+              {col
+              .filter((data) => data.is_active)
+              .map((data) => (
                 <div key={data.id} className="relative inline-block align-top">
                   <div
                     className="relative rounded-[14px] overflow-visible inline-block align-top"
@@ -119,10 +240,13 @@ const Overview = () => {
                       display: "inline-block",
                     }}
                   >
-                    <Dataset
+                    <DatasetWrapper
                       dataset={data}
                       editMode={editMode}
-                      onFieldChange={handleFieldChange}
+                      ref={(ref) => {
+                        if (ref) datasetRefs.current[data.id] = ref;
+                      }}
+                      users={assignedUsers}
                     />
                     {editMode && (
                       <img
@@ -146,35 +270,48 @@ const Overview = () => {
           ))}
         </div>
       </div>
-
-      <div className="flex-shrink-0 px-[40px] pb-[40px]">
+      
+      {/*Footer */}
+      <div className="flex-shrink-0 px-4 md:px-[40px] pb-[40px]">
         <div className="h-[1px] bg-[#000000] opacity-20 mb-[20px]" />
-        <div className="flex justify-center gap-[200px] flex-wrap">
+
+        <div
+          className="flex justify-center items-center flex-nowrap"
+          style={{
+            // afstand tussen knoppen:
+            // - kan helemaal naar 0px op klein scherm
+            // - groeit met schermbreedt (10vw)
+            // - max 200px
+            columnGap: "clamp(0px, 10vw, 200px)",
+          }}
+        >
           {!editMode ? (
             <>
               <button
-                className="h-[50px] px-[16px] whitespace-nowrap bg-[#E5F9F7]
-                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
-                 border-[#CCCCCC] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition"
+                className="shrink-0 h-[50px] px-3 md:px-[16px] whitespace-nowrap bg-[#E5F9F7]
+                text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                border-[#CCCCCC] cursor-pointer hover:brightness-95
+                active:brightness-80 transition"
               >
                 View Actions
               </button>
+
               <button
                 onClick={() => setIsUploadOpen(true)}
-                className="h-[50px] px-[16px] whitespace-nowrap bg-[#E5F9F7]
-                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
-                 border-[#CCCCCC] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition"
+                className="shrink-0 h-[50px] px-3 md:px-[16px] whitespace-nowrap bg-[#E5F9F7]
+                text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                border-[#CCCCCC] cursor-pointer hover:brightness-95
+                active:brightness-80 transition"
               >
                 Upload Dataset
               </button>
+
               <button
                 onClick={enterEditMode}
-                className="h-[50px] px-[16px] bg-[#E5F9F7]
-                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
-                 border-[#CCCCCC] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition"
+                className="shrink-0 h-[50px] px-3 md:px-[16px] bg-[#E5F9F7]
+                text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                border-[#CCCCCC] cursor-pointer hover:brightness-95
+                active:brightness-80 transition whitespace-nowrap"
               >
                 Edit
               </button>
@@ -183,28 +320,31 @@ const Overview = () => {
             <>
               <button
                 onClick={cancelEdit}
-                className="h-[50px] px-[16px] bg-[#E5F9F7]
-                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
-                 border-[#CCCCCC] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition"
+                className="shrink-0 h-[50px] px-3 md:px-[16px] bg-[#E5F9F7]
+                text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                border-[#CCCCCC] cursor-pointer hover:brightness-95
+                active:brightness-80 transition"
               >
                 Cancel
               </button>
+
               <button
                 onClick={handleDeleteSelected}
-                className="h-[50px] px-[16px] bg-[#FCA5A5]
-                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
-                 border-[#CC3333] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition"
+                disabled={selectedDatasets.length === 0}
+                className="shrink-0 h-[50px] px-3 md:px-[16px] bg-[#FCA5A5]
+                text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                border-[#CC3333] cursor-pointer hover:brightness-95
+                active:brightness-80 transition disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
               >
                 Delete
               </button>
+
               <button
                 onClick={saveEdit}
-                className="h-[50px] px-[16px] bg-[#B3DCD7]
-                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
-                 border-[#91d0c9ff] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition"
+                className="shrink-0 h-[50px] px-3 md:px-[16px] bg-[#B3DCD7]
+                text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                border-[#91d0c9ff] cursor-pointer hover:brightness-95
+                active:brightness-80 transition whitespace-nowrap"
               >
                 Save
               </button>
@@ -213,32 +353,16 @@ const Overview = () => {
         </div>
       </div>
 
+
       <UploadDataset
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
-        onSave={(newData) => {
-          const formatted = {
-            id: newData.id || `Dataset${Math.floor(Math.random() * 10000)}`,
-            datasetName: newData.datasetName || newData.name || "Untitled Dataset",
-            fileName: newData.fileName || "Unknown.zip",
-            status: newData.status || "Pending review",
-            images: newData.images || 0,
-            createdBy: newData.createdBy || "anthony",
-            assignedTo: newData.assignedTo || newData.assignTo || "N/A",
-            reviewedBy: newData.reviewedBy || newData.reviewer || "N/A",
-            createdAt: newData.createdAt || new Date().toLocaleString(),
-            lastUpdated: new Date().toLocaleString(),
-            dateOfCollection: newData.dateOfCollection || "N/A",
-            location: newData.location || "N/A",
-            description: newData.description || "",
-          };
-          setDatasetsState((prev) => [formatted, ...prev]);
-          setDraftDatasets((prev) => [formatted, ...prev]);
-          setIsUploadOpen(false);
-        }}
+        users={assignedUsers}
+        onSave={handleSaveDataset}
       />
     </div>
   );
 };
 
 export default Overview;
+

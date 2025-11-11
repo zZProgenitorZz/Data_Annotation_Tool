@@ -3,7 +3,6 @@ from backend.src.models.user import Token, UserDto
 from backend.src.services.user_service import UserLogin, ACCESS_TOKEN_EXPIRE_MINUTES
 from datetime import timedelta
 from backend.src.services.guest_session_service import get_guest_user
-import uuid
 
 router = APIRouter()
 

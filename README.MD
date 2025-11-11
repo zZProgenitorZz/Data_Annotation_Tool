@@ -6,11 +6,11 @@
 
 # creating the virtual environment(already done "fapivenv")
 
-1. python -m venv fapivenv
+1. python -m venv venv
 
 <!-- activating the virtual environment -->
 
-2. .\fapivenv\Scripts\activate
+2. .\venv\Scripts\activate
 
 <!-- installing fastapi with every dependency -->
 

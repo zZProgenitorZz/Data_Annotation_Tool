@@ -12,6 +12,7 @@ export async function login(username, password) {
 
   // Store token in localStorage
   localStorage.setItem("access_token", response.data.access_token);
+  localStorage.setItem("auth_kind", "user");
   return response.data;
 }
 
@@ -45,6 +46,7 @@ export async function guestLogin() {
   const {access_token} = response.data;
 
   localStorage.setItem("access_token", access_token)
+  localStorage.setItem("auth_kind", "guest");
 
   return response.data
 }
