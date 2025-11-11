@@ -80,7 +80,7 @@ class ImageService:
         return out
     
     # ----------  complete upload ----------
-    async def complete_upload(self, image_id: str, checksum: str | None = None, width: int | None = None, height: int | None = None):
+    async def complete_upload(self, image_id: str,current_user, checksum: str | None = None, width: int | None = None, height: int | None = None):
         doc = await self.image_repo.get_image_metadata_by_id(image_id)
         if not doc:
             raise NotFoundError(f"Image metadata with id {image_id} not found")
@@ -110,9 +110,65 @@ class ImageService:
             await self.metadata_service.update_dataset_image_count(doc.datasetId, 1, current_user=None)
 
         return {"ok": True}
+    
+
+    # ------------Complete upload in bulk ---------------------
+    async def complete_upload_bulk(self, items: List[dict], current_user):
+        """
+        items: [{imageId, checksum, width, height}]
+        """
+        updated_count_by_dataset = {}
+
+        for item in items:
+            image_id = item["imageId"]
+            checksum = item.get("checksum")
+            width = item.get("width")
+            height = item.get("height")
+
+            doc = await self.image_repo.get_image_metadata_by_id(image_id)
+            if not doc:
+                continue  # of raise
+
+            prev_status = getattr(doc, "status", None)
+
+            try:
+                head = s3.head_object(Bucket=S3_BUCKET, Key=doc.s3Key)
+            except Exception:
+                await self.image_repo.update_image_metadata(
+                    image_id,
+                    {"status": "failed", "updatedAt": datetime.now(timezone.utc)}
+                )
+                continue
+
+            patch = {
+                "status": "ready",
+                "updatedAt": datetime.now(timezone.utc),
+                "etag": head.get("ETag", "").strip('"'),
+                "sizeBytes": head.get("ContentLength"),
+            }
+            if checksum: patch["checksum"] = checksum
+            if width is not None: patch["width"] = width
+            if height is not None: patch["height"] = height
+
+            await self.image_repo.update_image_metadata(image_id, patch)
+
+            if prev_status != "ready":
+                updated_count_by_dataset[doc.datasetId] = (
+                    updated_count_by_dataset.get(doc.datasetId, 0) + 1
+                )
+
+        # uiteindelijk één keer per dataset tellen
+        for dataset_id, count in updated_count_by_dataset.items():
+            await self.metadata_service.update_dataset_image_count(
+                dataset_id, count, current_user=None
+            )
+
+        return {"ok": True}
+
+
 
   # ----------  signed GET for display ----------
-    async def get_signed_url(self, image_id: str):
+    async def get_signed_url(self, image_id: str, current_user):
         doc = await self.image_repo.get_image_metadata_by_id(image_id)
         if not doc or doc.status != "ready":
             raise NotFoundError("Image not found or not ready")
@@ -132,6 +188,7 @@ class ImageService:
             raise NotFoundError(f"Image metadata with id {image_id} not found")
         if metadata.is_active:
             return False
+        
 
         # NEW: delete from S3 if we have a key (instead of local os.remove)
         if metadata.s3Key:

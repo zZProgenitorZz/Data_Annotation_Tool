@@ -28,6 +28,13 @@ export async function completeImage(imageId, extra = {}) {
   return data;
 }
 
+export async function completeImagesBulk(items) {
+  // items: [{ imageId, checksum?, width?, height? }, ...]
+  const { data } = await api.post(`/image/images/complete-bulk`, items);
+  return data;
+}
+
+
 /**
  * List images for a dataset.
  * Response: [{ _id, originalFilename, contentType }, ...]
@@ -61,4 +68,64 @@ export async function uploadToS3(putUrl, file, headers = {}) {
   });
   if (!res.ok) throw new Error(`S3 upload failed: ${res.status}`);
   return true;
+}
+
+
+
+
+export async function hardDeleteImage(image_id) {
+  const {data} = await api.delete(`/image/${image_id}/hard`);
+  return data
+}
+
+export async function hardDeleteDatasetImages(dataset_id){
+  const {data} = await api.delete(`/image/dataset/${dataset_id}/hard`)
+  return data;
+}
+
+
+
+
+export async function softDeleteImages(datasetId, imageIds) {
+  // Alleen params meesturen als we specifieke images willen deleten
+  const config =
+    imageIds && imageIds.length
+      ? { params: { image_id: imageIds } } // => ?image_id=a&image_id=b&...
+      : {};
+
+  const { data } = await api.delete(`/image/${datasetId}/soft`, config);
+  return data; 
+}
+
+export async function softDeleteImage(datasetId, imageId) {
+  return softDeleteImages(datasetId, [imageId]);
+}
+
+
+export async function softDeleteDatasetImages(datasetId) {
+  return softDeleteImages(datasetId, null);
+}
+
+
+
+
+// For guest User
+
+
+export async function uploadGuestImages(datasetId, files) {
+  if (!files || files.length === 0) return [];
+
+  const formData = new FormData();
+  files.forEach((f) => formData.append("files", f)); // "files" moet matchen met je FastAPI parameternaam
+ 
+
+  const res = await api.post(`/image/guest-datasets/${datasetId}/images`, formData,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    }
+  );
+
+  return res.data; // backend kan bijv. de image-metadata teruggeven
 }

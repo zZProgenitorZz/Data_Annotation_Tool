@@ -1,0 +1,33 @@
+  <UploadDataset
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+        users={assignedUsers}
+        onSave={(newData) => {
+          const formatted = {
+            name: newData || newData.name || "Untitled Dataset",
+            status: newData.status || "Pending review",
+            total_Images: newData.total_Images || 0,
+            completed_Images: 0,
+            createdBy: newData.createdBy,
+            assignedTo: newData.assignedTo || ["N/A"],
+            date_of_collection: newData.date_of_collection || "N/A",
+            is_active: true,
+            location_of_collection: newData.location_of_collection || "N/A",
+            description: newData.description || "",
+          };
+          setDatasetsState((prev) => [formatted, ...prev]);
+          setIsUploadOpen(false);
+        }}
+      />
+
+      
+<button 
+        onClick={handleLogout}
+        className="h-[40px] px-[16px] bg-[#66B8A6]
+                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                 cursor-pointer hover:brightness-95
+                 active:brightness-80 transition"
+                 >
+            Log out
+        </button>
+      

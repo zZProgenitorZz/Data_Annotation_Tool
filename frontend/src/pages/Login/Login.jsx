@@ -10,10 +10,9 @@ import { AuthContext } from "../../components/AuthContext";
 function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [user, setUser] = useState(null);
   const [view, setView] = useState("login");
   const [errorMessage, setErrorMessage] = useState("");
-  const {setCurrentUser} = useContext(AuthContext)
+  const {setCurrentUser, setAuthType} = useContext(AuthContext)
   
 
   const navigate = useNavigate();
@@ -24,19 +23,18 @@ function Login() {
     e.preventDefault();
     try {
       setErrorMessage("")
-
       // Login via FastAPI
       await login(username, password);
 
       // Get logged-in user info
       const userData = await getCurrentUser();
       
-      setUser(userData);
-      setCurrentUser(userData)
+      setCurrentUser(userData);
+      setAuthType("user")
+      
 
-      console.log(user)
       // Example: Navigate to overview page after login
-      navigate("/Images");
+      navigate("/overview");
 
     } catch (error) {
       console.error("Login failed:", error);
@@ -54,12 +52,13 @@ function Login() {
   const handleContinueAsGuest = async (e) => {
     e.preventDefault();
     try{
+      //Login via Fastapi
       await guestLogin();
-
       const user = await getGuestInfo();
-      setUser(user)
 
-      console.log(user)
+      setCurrentUser(user);
+      setAuthType("guest")
+
 
       navigate("/overview");
 

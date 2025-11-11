@@ -2,10 +2,17 @@ import { useState, useEffect, useMemo, useCallback, useRef, useContext } from "r
 import UploadDataset from "../../components/UploadDataset";
 import selectionBox from "../../assets/selectionbox.png";
 import selectedBox from "../../assets/selectedbox.png";
-import { getAllDatasets, updateDataset, softDeleteDataset } from "../../services/datasetService";
+import { getAllDatasets, updateDataset } from "../../services/datasetService";
 import DatasetWrapper from "./DatasetCard"
 import { getAllUsers } from "../../services/authService";
-import getChangedFields from "../../components/utils";
+import getChangedFields from "../../utils/utils";
+import { uploadImagesToS3 } from "../../utils/uploadImagesToS3";
+import { createDataset } from "../../services/datasetService";
+import { soft_Delete_Dataset, hard_Delete_Dataset } from "../../utils/deleteDataset";
+import { softDeleteDataset } from "../../services/datasetService";
+import { AuthContext } from "../../components/AuthContext";
+import { uploadGuestImages } from "../../services/ImageService";
+import Header from "../../components/Header";
 
 
 const getAssignedUser = async () => {
@@ -34,22 +41,50 @@ const Overview = () => {
   const [editMode, setEditMode] = useState(false);
   const [selectedDatasets, setSelectedDatasets] = useState([]);
   const [assignedUsers, setAssignedUsers] = useState([])
+  const { currentUser, authType, loading} = useContext(AuthContext)
 
-  
-  
-  
-  useEffect(() => {
-      const fetchUsers = async () => {
-        const result = await getAssignedUser();
-        setAssignedUsers(result);
-      };
-      fetchUsers();
-  }, []);
-  
-  // Use refs to store the Dataset components so we can access their local state
+
+  //ref to store dataset components
   const datasetRefs = useRef({});
 
-  // Prevent background scroll when upload is open
+  // 🔹 Herbruikbare fetch-functie voor datasets
+  const fetchDatasets = useCallback(async () => {
+    try {
+      const data = await getAllDatasets();
+      setDatasetsState(data);
+    } catch (error) {
+      console.error("Error fetching datasets:", error);
+    }
+  }, []);
+  
+  //useEffect fetch to get all Users
+
+  useEffect(() => {
+    if (loading) return;
+    if (authType === "guest") {
+      setAssignedUsers([]);
+      return;
+    }
+      const fetchUsers = async () => {
+        try{
+          const result = await getAssignedUser();
+          setAssignedUsers(result || []);
+        } catch (err) {
+          console.error("Error fetching assigned users:", err)
+          setAssignedUsers([]);
+        }
+      };
+      fetchUsers();
+  }, [loading, authType]);
+    
+
+   // Fetch to reload page
+  useEffect(() => {
+    fetchDatasets();
+  }, [fetchDatasets]);
+  
+ 
+  // Scrolling lock by open model
   useEffect(() => {
     document.body.style.overflow = isUploadOpen ? "hidden" : "auto";
     return () => {
@@ -57,19 +92,7 @@ const Overview = () => {
     };
   }, [isUploadOpen]);
 
-  // Fetch datasets from backend when page loads
-  useEffect(() => {
-    const fetchDatasets = async () => {
-      try {
-        const data = await getAllDatasets();
-        setDatasetsState(data);
-      } catch (error) {
-        console.error("Error fetching datasets:", error);
-      }
-    };
-
-    fetchDatasets();
-  }, []);
+ 
 
   // Enter edit mode
   const enterEditMode = () => {
@@ -111,7 +134,6 @@ const Overview = () => {
       // Loop through and update each dataset in the backend
       for (const d of updatedDatasets) {
         const original = datasetsState.find(data => data.id === d.id);
-
         const changedFields = getChangedFields(original, d);
 
         if (Object.keys(changedFields).length> 0) {
@@ -133,7 +155,13 @@ const Overview = () => {
     try {
       // Call softDeleteDataset for each selected dataset
       for (const datasetId of selectedDatasets) {
-        await softDeleteDataset(datasetId);
+        if (!loading && authType === "user") {
+        await soft_Delete_Dataset(datasetId);
+        await hard_Delete_Dataset(datasetId);
+        }
+        if (!loading && authType === "guest") {
+          await softDeleteDataset(datasetId)
+        }
       }
 
       // Remove from local state
@@ -153,25 +181,48 @@ const Overview = () => {
     return colArr;
   }, [datasetsState]);
 
+  const handleSaveDataset = async ({ dataset, files }) => {
+    try {
+      // 1) dataset aanmaken in backend
+      const created = await createDataset(dataset);
+      const datasetId = created;
+     
+
+      if (!loading && authType === "user") {
+        // 2) images uploaden naar S3 met helper (alleen als er files zijn)
+        if (files && files.length && datasetId) {
+          await uploadImagesToS3({
+            datasetId,
+            files,
+            onProgress: ({ imageId, pct }) => {
+              console.log("upload", imageId, pct, "%");
+            },
+          });
+        }
+      }
+
+      if (!loading && authType === "guest") {
+        if (files && files.length && datasetId) {
+          await uploadGuestImages(datasetId, files);
+        }
+      }
+      // 3) Datasets opnieuw ophalen (i.p.v. window.location.reload)
+      await fetchDatasets();
+
+      // 4) Modal sluiten
+      setIsUploadOpen(false);
+    } catch (error) {
+      console.error("Error saving dataset (or uploading images):", error);
+      // hier zou je evt. een error state/toast kunnen zetten
+    }
+  };
+
+   
+
   return (
     <div className="h-screen flex flex-col bg-gradient-to-b from-[#44F3C9] to-[#3F7790]">
       {/* Header */}
-      <div
-        className="relative flex items-end justify-center flex-shrink-0"
-        style={{ height: "70px", backgroundColor: "rgba(255,255,255,0.31)" }}
-      >
-        <img
-          src="src/assets/aidxlogo.png"
-          alt="AiDx Medical Logo"
-          className="absolute left-[0px] top-[2px] bottom-[0px] pl-[3px] h-[40px]"
-        />
-        <h1
-          className="text-[#000000] text-[30px] font-[600] italic mb-[-2px]"
-          style={{ textShadow: "0px 1px 0px rgba(0,0,0,0.15)" }}
-        >
-          Datasets
-        </h1>
-      </div>
+      <Header title="Datasets" currentUser={currentUser}/>
 
       <div className="flex-1 overflow-auto px-[40px] pt-[40px] datasets-scroll">
         <div className="flex justify-center gap-[24px] items-start flex-wrap">
@@ -219,35 +270,48 @@ const Overview = () => {
           ))}
         </div>
       </div>
-
-      <div className="flex-shrink-0 px-[40px] pb-[40px]">
+      
+      {/*Footer */}
+      <div className="flex-shrink-0 px-4 md:px-[40px] pb-[40px]">
         <div className="h-[1px] bg-[#000000] opacity-20 mb-[20px]" />
-        <div className="flex justify-center gap-[200px] flex-wrap">
+
+        <div
+          className="flex justify-center items-center flex-nowrap"
+          style={{
+            // afstand tussen knoppen:
+            // - kan helemaal naar 0px op klein scherm
+            // - groeit met schermbreedt (10vw)
+            // - max 200px
+            columnGap: "clamp(0px, 10vw, 200px)",
+          }}
+        >
           {!editMode ? (
             <>
               <button
-                className="h-[50px] px-[16px] whitespace-nowrap bg-[#E5F9F7]
-                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
-                 border-[#CCCCCC] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition"
+                className="shrink-0 h-[50px] px-3 md:px-[16px] whitespace-nowrap bg-[#E5F9F7]
+                text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                border-[#CCCCCC] cursor-pointer hover:brightness-95
+                active:brightness-80 transition"
               >
                 View Actions
               </button>
+
               <button
                 onClick={() => setIsUploadOpen(true)}
-                className="h-[50px] px-[16px] whitespace-nowrap bg-[#E5F9F7]
-                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
-                 border-[#CCCCCC] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition"
+                className="shrink-0 h-[50px] px-3 md:px-[16px] whitespace-nowrap bg-[#E5F9F7]
+                text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                border-[#CCCCCC] cursor-pointer hover:brightness-95
+                active:brightness-80 transition"
               >
                 Upload Dataset
               </button>
+
               <button
                 onClick={enterEditMode}
-                className="h-[50px] px-[16px] bg-[#E5F9F7]
-                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
-                 border-[#CCCCCC] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition"
+                className="shrink-0 h-[50px] px-3 md:px-[16px] bg-[#E5F9F7]
+                text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                border-[#CCCCCC] cursor-pointer hover:brightness-95
+                active:brightness-80 transition whitespace-nowrap"
               >
                 Edit
               </button>
@@ -256,29 +320,31 @@ const Overview = () => {
             <>
               <button
                 onClick={cancelEdit}
-                className="h-[50px] px-[16px] bg-[#E5F9F7]
-                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
-                 border-[#CCCCCC] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition"
+                className="shrink-0 h-[50px] px-3 md:px-[16px] bg-[#E5F9F7]
+                text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                border-[#CCCCCC] cursor-pointer hover:brightness-95
+                active:brightness-80 transition"
               >
                 Cancel
               </button>
+
               <button
                 onClick={handleDeleteSelected}
                 disabled={selectedDatasets.length === 0}
-                className="h-[50px] px-[16px] bg-[#FCA5A5]
-                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
-                 border-[#CC3333] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="shrink-0 h-[50px] px-3 md:px-[16px] bg-[#FCA5A5]
+                text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                border-[#CC3333] cursor-pointer hover:brightness-95
+                active:brightness-80 transition disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
               >
                 Delete
               </button>
+
               <button
                 onClick={saveEdit}
-                className="h-[50px] px-[16px] bg-[#B3DCD7]
-                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
-                 border-[#91d0c9ff] cursor-pointer hover:brightness-95
-                 active:brightness-80 transition"
+                className="shrink-0 h-[50px] px-3 md:px-[16px] bg-[#B3DCD7]
+                text-[#000000] text-[20px] font-[600] italic rounded-[10px]
+                border-[#91d0c9ff] cursor-pointer hover:brightness-95
+                active:brightness-80 transition whitespace-nowrap"
               >
                 Save
               </button>
@@ -287,32 +353,16 @@ const Overview = () => {
         </div>
       </div>
 
+
       <UploadDataset
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
-        onSave={(newData) => {
-          const formatted = {
-            id: newData.id || `Dataset${Math.floor(Math.random() * 10000)}`,
-            name: newData.datasetName || newData.name || "Untitled Dataset",
-            fileName: newData.fileName || "Unknown.zip",
-            status: newData.status || "Pending review",
-            total_Images: newData.images || 0,
-            completed_Images: 0,
-            createdBy: newData.createdBy || "anthony",
-            assignedTo: newData.assignedTo || newData.assignTo || ["N/A"],
-            reviewedBy: newData.reviewedBy || newData.reviewer || "N/A",
-            createdAt: newData.createdAt || new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            date_of_collection: newData.dateOfCollection || "N/A",
-            location_of_collection: newData.location || "N/A",
-            description: newData.description || "",
-          };
-          setDatasetsState((prev) => [formatted, ...prev]);
-          setIsUploadOpen(false);
-        }}
+        users={assignedUsers}
+        onSave={handleSaveDataset}
       />
     </div>
   );
 };
 
 export default Overview;
+
