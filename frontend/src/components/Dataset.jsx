@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 export const initialDatasets = [
   {
@@ -82,6 +83,7 @@ const ChevronUp = ({ className }) => (
 );
 
 const Dataset = ({ dataset, editMode = false, onFieldChange = () => {} }) => {
+  const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [localData, setLocalData] = useState(dataset); 
 
@@ -195,7 +197,12 @@ const Dataset = ({ dataset, editMode = false, onFieldChange = () => {} }) => {
         <Row label="Images" name="images" type="number" />
 
         {!editMode && (
-          <div className="flex justify-end items-center mt-[6px] cursor-pointer hover:opacity-80 transition">
+          <div className="flex justify-end items-center mt-[6px] cursor-pointer hover:opacity-80 transition"
+          onClick={() => {
+            const datasetName = dataset.datasetName || dataset.fileName || dataset.id;
+            navigate(`/annotation/${encodeURIComponent(datasetName)}`);
+          }}
+          >
             <span className="text-[16px] font-[500] text-[#000000] mr-[4px]">
               Start
             </span>
