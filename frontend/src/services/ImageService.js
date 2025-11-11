@@ -39,10 +39,21 @@ export async function completeImagesBulk(items) {
  * List images for a dataset.
  * Response: [{ _id, originalFilename, contentType }, ...]
  */
-export async function listImages(datasetId) {
-  const { data } = await api.get(`/image/${datasetId}/all-images`);
+//export async function listImages(datasetId) {
+//  const { data } = await api.get(`/image/${datasetId}/all-images`);
+//  return data;
+//}
+
+// ImageService.js
+export async function listImages(datasetId, { limit, offset } = {}) {
+  const params = {};
+  if (limit !== undefined) params.limit = limit;
+  if (offset !== undefined) params.offset = offset;
+
+  const { data } = await api.get(`/image/${datasetId}/all-images`, { params });
   return data;
 }
+
 
 /**
  * Get a temporary signed GET URL to display/download an image.

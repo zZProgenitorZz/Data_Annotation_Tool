@@ -45,16 +45,28 @@ class ImageMetadataRepo:
 
 
     # Get image metadata by dataset_id
-    async def get_image_by_dataset_id(self, dataset_id: str) -> list[ImageMetadata]:
-        images_cursor = self.collection.find({"datasetId": dataset_id})
-        image_metadatas = []
-        if images_cursor:
-            async for image in images_cursor:
-                image_metadatas.append(ImageMetadata(
-                    **image
-                ))
-            return image_metadatas
-        return None
+    async def get_image_by_dataset_id(
+        self,
+        dataset_id: str,
+        limit: int | None,
+        offset: int,
+    ) -> list[ImageMetadata]:
+        query = self.collection.find({"datasetId": dataset_id})
+
+        # offset toepassen als hij > 0 is
+        if offset:
+            query = query.skip(offset)
+
+        # limit alleen als hij niet None is
+        if limit is not None:
+            query = query.limit(limit)
+            docs = await query.to_list(length=limit)
+        else:
+            # alle results (vanaf offset)
+            docs = await query.to_list(length=None)
+
+        return [ImageMetadata(**doc) for doc in docs]
+
      
 
 #----------------------------------niet in gebruik (NOG)---------------------------------------

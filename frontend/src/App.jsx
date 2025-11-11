@@ -19,6 +19,7 @@ function App() {
           <Route path="/overview" element={<RequireAuth> <Overview /> </RequireAuth>} />
           <Route path="/imageList" element={<RequireAuth><ImageList/></RequireAuth>}/>
           <Route path="/imageGrid" element={<ImageGrid/>}/>
+          <Route path="/annotation" element={<AnnotationPage/>}/>
 
 
         </Routes>

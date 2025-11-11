@@ -287,6 +287,12 @@ const DatasetWithRef = ({ dataset, editMode, localDataRef, users }) => {
     navigate("/imageList")
   }
 
+  const goToAnnotations = () =>{
+    localStorage.setItem("selectedDataset", JSON.stringify(localData));
+
+    navigate("/annotation")
+  }
+
   
 
   return (
@@ -316,7 +322,8 @@ const DatasetWithRef = ({ dataset, editMode, localDataRef, users }) => {
             </button>
 
             {/*  Rechter 'Start' knop */}
-            <div className="flex items-center cursor-pointer hover:opacity-80 transition">
+            <div className="flex items-center cursor-pointer hover:opacity-80 transition"
+            onClick ={goToAnnotations}>
               <span className="text-[16px] font-[500] text-[#000000] mr-[4px]">
                 Start
               </span>

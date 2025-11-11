@@ -1,7 +1,8 @@
-import React, {useState, useEffect} from "react";
+import React, {useState, useEffect, useContext} from "react";
 import { listImages, softDeleteImage, hardDeleteImage } from "../../services/ImageService";
-import { useNavigate } from "react-router-dom";
 import UploadImages from "../../components/ImageUploader.jsx"
+import Header from "../../components/Header.jsx";
+import { AuthContext } from "../../components/AuthContext.jsx";
 
 
 
@@ -10,7 +11,7 @@ const ImageList = () => {
   const [imageList, setImageList] = useState([]);
   const [dataset, setDataset] = useState(null);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
+  const {currentUser} = useContext(AuthContext)
 
 
   useEffect(() => {
@@ -51,24 +52,8 @@ const ImageList = () => {
   return (
     <div className="h-screen flex flex-col bg-gradient-to-b from-[#44F3C9] to-[#3F7790]">
       {/* Header */}
-      <div
-        className="relative flex items-end justify-center flex-shrink-0"
-        style={{ height: "70px", backgroundColor: "rgba(255,255,255,0.31)" }}
-      >
-        <img
-          src="src/assets/aidxlogo.png"
-          alt="AiDx Medical Logo"
-          className="absolute left-[0px] top-[2px] bottom-[0px] pl-[3px] h-[40px] cursor-pointer 
-               transition-transform duration-200 hover:scale-105"
-          onClick = {() => navigate("/overview")}
-        />
-        <h1
-          className="text-[#000000] text-[30px] font-[600] italic mb-[-2px]"
-          style={{ textShadow: "0px 1px 0px rgba(0,0,0,0.15)" }}
-        >
-          List of {dataset?.name} Images
-        </h1>
-      </div>
+      <Header title={dataset ? `List of ${dataset.name} Images` : "List of Images"} currentUser={currentUser}/>
+      
       <div className ="flex flex-1 items-center justify-center mt-[1px]">
         <UploadImages
         datasetId = {dataset?.id}

@@ -202,7 +202,7 @@ class ImageService:
 
     # hard delete all soft-deleted images of a dataset
     async def hard_delete_dataset_images(self, dataset_id: str, current_user: UserDto | None = None) -> int:
-        images = await self.image_repo.get_image_by_dataset_id(dataset_id)
+        images = await self.image_repo.get_image_by_dataset_id(dataset_id, limit=None, offset=0)
         if not images:
             raise NotFoundError(f"Images with dataset ID: {dataset_id} not found")
         

@@ -11,7 +11,7 @@ label_service = LabelService()
 
 
 # Create a new label
-@router.post("/", response_model=str, status_code=status.HTTP_201_CREATED)
+@router.post("/create", response_model=str, status_code=status.HTTP_201_CREATED)
 async def create_label(dataset_id: str, label: Label, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
     try:
         if is_guest_user(current_user):

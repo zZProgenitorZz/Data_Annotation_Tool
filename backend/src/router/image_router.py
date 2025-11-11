@@ -1,7 +1,7 @@
 
 from backend.src.models.user import UserDto
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Response
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Response, Query
 from backend.src.helpers.helpers import NotFoundError
 from backend.src.services.imageMetadata_service import MetadataService
 from backend.src.services.image_service import ImageService
@@ -9,8 +9,6 @@ from backend.src.models.imageMetadata import ImageMetadataDto
 from backend.src.helpers.auth_helper import require_roles, is_guest_user, require_guest_user, require_normal_user
 from backend.src.services.guest_session_service import guest_session_service
 from pydantic import BaseModel, Field, ConfigDict
-from backend.core.aws import S3_BUCKET, S3_PREFIX, s3
-from datetime import datetime, timezone
 from backend.src.repositories.Image_metadata_repo import ImageMetadataRepo
 
 router = APIRouter()
@@ -70,11 +68,11 @@ async def get_signed_url(image_id: str, current_user: UserDto = Depends(require_
 
 # Get images from dataset
 @router.get("/{dataset_id}/all-images", response_model=list[ImageMetadataDto])
-async def get_images(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def get_images(dataset_id: str, limit: Optional[int] = Query(None, ge=1, le=200) , offset: int = Query(0, ge=0) ,current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
     try:
         if is_guest_user(current_user):
             return guest_session_service.get_images_by_dataset(current_user.id, dataset_id)
-        return await metadata_service.get_images_by_dataset(dataset_id, current_user)
+        return await metadata_service.get_images_by_dataset(dataset_id=dataset_id, current_user=current_user, limit=limit, offset=offset,)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     

@@ -1,13 +1,14 @@
 import { useNavigate, useParams } from "react-router-dom";
-import { useState, useRef, useEffect } from "react";
-import aidxLogo from "../../assets/aidxlogo.png";
+import { useState, useRef, useEffect, useContext, useCallback } from "react";
 import backIcon from "../../assets/back-button-icon.png";
 import undoIcon from "../../assets/undo.png";
 import redoIcon from "../../assets/redo.png";
 import slider from "../../assets/slider.jpg";
 
 import ImageDeletion from "./components/ImageDeletion";
-
+import Header from "../../components/Header";
+import { AuthContext } from "../../components/AuthContext";
+import { getSignedUrl, listImages } from "../../services/ImageService";
 // Tool icons
 import boundingBoxTool from "../../assets/bounding-box-tool.png";
 import polygonTool from "../../assets/polygon-tool.png";
@@ -37,24 +38,11 @@ import deleteImageIcon from "../../assets/delete-image.png";
 // Toasts (Pop-ups)
 import Toast from "./components/Toast";
 
-// Microscope images
-import stool001 from "../../assets/stool/001.jpg";
-import stool002 from "../../assets/stool/002.jpg";
-import stool003 from "../../assets/stool/003.jpg";
-import stool004 from "../../assets/stool/004.jpg";
-import stool005 from "../../assets/stool/005.jpg";
-import stool006 from "../../assets/stool/006.jpg";
-import stool007 from "../../assets/stool/007.jpg";
-import stool008 from "../../assets/stool/008.jpg";
-import stool009 from "../../assets/stool/009.jpg";
-import stool010 from "../../assets/stool/010.jpg";
-import stool011 from "../../assets/stool/011.jpg";
 
 
 
 const AnnotationPage = () => {
   const navigate = useNavigate();
-  const { datasetName } = useParams();
 
   const [selectedTool, setSelectedTool] = useState(null);
   const [showCategoryPopup, setShowCategoryPopup] = useState(false);
@@ -74,98 +62,182 @@ const AnnotationPage = () => {
   const fileListRef = useRef(null);
 
   const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 });
-
   const [showImageDeletion, setShowImageDeletion] = useState(false);
-
-  // === File List state ===
-    const [files] = useState([
-    "stool/001.jpg",
-    "stool/002.jpg",
-    "stool/003.jpg",
-    "stool/004.jpg",
-    "stool/005.jpg",
-    "stool/006.jpg",
-    "stool/007.jpg",
-    "stool/008.jpg",
-    "stool/009.jpg",
-    "stool/010.jpg",
-    "stool/011.jpg",
-  ]);
-
-    const IMAGE_MAP = {
-    "stool/001.jpg": stool001,
-    "stool/002.jpg": stool002,
-    "stool/003.jpg": stool003,
-    "stool/004.jpg": stool004,
-    "stool/005.jpg": stool005,
-    "stool/006.jpg": stool006,
-    "stool/007.jpg": stool007,
-    "stool/008.jpg": stool008,
-    "stool/009.jpg": stool009,
-    "stool/010.jpg": stool010,
-    "stool/011.jpg": stool011,
-  };
-
-
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedFile, setSelectedFile] = useState(null);
 
-  // Current image / total
-  // Als er een selectedFile is, dan index + 1, anders return null
-  const currentIndex = selectedFile ? files.indexOf(selectedFile) + 1 : 0;
-  const totalImages = files.length;
+  const {currentUser, authType, loading} = useContext(AuthContext);
+
+  const [dataset, setDataset] = useState(null); 
+  const [imageMetas, setImageMetas] = useState([]);  // metadata from mongo
+  const [urls, setUrls] = useState({});              // { [imageId]: url}
+  const [selectedImageId, setSelectedImageId] = useState(null);
+
+  const [loading2, setLoading2] = useState(false)
+  const [offset, setOffset] = useState(0)
+  const LIMIT = 50;
+
+  const selectedMeta = imageMetas.find((img) => img.id === selectedImageId) || null;
+  const selectedUrl = selectedImageId ? urls[selectedImageId] : null;
+  const totalImages = imageMetas.length;
+  const currentIndex = selectedImageId ? imageMetas.findIndex((img) => img.id === selectedImageId) + 1 : 0;
+
+
+  // get selectedDataset
+  useEffect (() => {
+    try{
+      const stored = localStorage.getItem("selectedDataset");
+      if (stored) setDataset(JSON.parse(stored))
+    } catch (err) {
+    console.error("Bad selectedDataset in localStorage:", err)}
+  }, [])
+
+  // fetch images once dataset is known -------------------
+  const fetchImages = async () => {
+    if (!dataset || loading2) return;
+    setLoading2(true);
+    try {
+      const result = await listImages(dataset.id);
+      setImageMetas(result); 
+      // hier komg if(!loading && authType === "guest")
+      
+    } catch (err){
+      console.error("Failed to fecht images:", err)
+    } finally {
+      setLoading2(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!dataset) return;
+    fetchImages();
+  }, [dataset]);
+
+  //getSignedUrl(get real images)------------ --------------------------------------------
+  useEffect(() => {
+    if (imageMetas.length === 0 && !loading && authType === "guest") return
+    let cancelled = false;
+
+    async function prefetch() {
+      const start = offset;
+      const end = Math.min(start + LIMIT, imageMetas.length);
+      const slice = imageMetas.slice(start, end);
+
+      const pairs = await Promise.all(
+        slice.map(async (img) => {
+          if (urls[img.id]) return null;
+          try{
+            const {url} = await getSignedUrl(img.id);
+            return [img.id, url];
+          } catch {
+            return [img.id, null];
+          }
+        })
+      );
+
+      if (cancelled) return;
+
+      const valid = pairs.filter(Boolean);
+      if (valid.length) {
+        setUrls((prev) => ({
+          ...prev,
+          ...Object.fromEntries(valid),
+        }));
+      }
+    }
+
+    prefetch();
+    return () => {
+      cancelled = true;
+    }
+  }, [imageMetas, offset, urls])
 
   // auto-select first image
   useEffect(() => {
-    if (!selectedFile && files.length > 0){
-      setSelectedFile(files[0]);
-    
+    if (!selectedImageId && imageMetas.length > 0){
+      setSelectedImageId(imageMetas[0].id);
     }
-  }, [selectedFile, files]);
+  }, [imageMetas, selectedImageId]);
 
-  const handleNextImage = () => {
-    if (!selectedFile) return;
-    const index = files.indexOf(selectedFile);
-    if (index < files.length - 1) {
-      setSelectedFile(files[index + 1]);
-    }
-  };
 
-  const handlePrevImage = () => {
-    if (!selectedFile) return;
-    const index = files.indexOf(selectedFile);
-    if (index > 0) {
-      setSelectedFile(files[index - 1]);
+  // Next Image
+  const handleNextImage = useCallback(() => {
+    if (!selectedImageId) return;
+
+    const index = imageMetas.findIndex((img) => img.id === selectedImageId);
+    if (index === -1 || index >= imageMetas.length - 1) return;
+
+    const nextIndex = index + 1;
+    const nextId = imageMetas[nextIndex].id;
+    setSelectedImageId(nextId);
+
+    const windowEnd = offset + LIMIT;
+    const threshold = windowEnd - 5;
+
+    if (nextIndex >= threshold && windowEnd < imageMetas.length) {
+      setOffset((prev) => prev + LIMIT);
     }
-  };
+  }, [selectedImageId, imageMetas, offset, LIMIT]); // deps
+
+  // Previous Image
+  const handlePrevImage = useCallback(() => {
+    if (!selectedImageId) return;
+
+    const index = imageMetas.findIndex((img) => img.id === selectedImageId);
+    if (index <= 0) return;
+
+    const prevIndex = index - 1;
+    const prevId = imageMetas[prevIndex].id;
+    setSelectedImageId(prevId);
+
+    if (prevIndex < offset && offset > 0) {
+      setOffset((prev) => Math.max(0, prev - LIMIT));
+    }
+  }, [selectedImageId, imageMetas, offset, LIMIT]);
+
+
 
   useEffect(() => {
     const handleKey = (e) => {
-      if (e.key == "ArrowRight") handleNextImage();
-      if (e.key == "ArrowLeft") handlePrevImage();
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        handleNextImage();
+      }
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        handlePrevImage();
+      }
     };
+
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-}, [selectedFile, files]);
+  }, [handleNextImage, handlePrevImage]);
 
-useEffect(() => { 
-  if (!selectedFile || !fileListRef.current) return;
 
-  const rowElement = fileListRef.current.querySelector(
-    `[data-file="${selectedFile}"]`
 
+
+  useEffect(() => { 
+    if (!selectedImageId || !fileListRef.current) return;
+
+    const rowElement = fileListRef.current.querySelector(
+      `[data-image-id="${selectedImageId}"]`
+    );
+
+    if (rowElement) {
+      rowElement.scrollIntoView({
+        block: "nearest",
+        behavior: "auto", // "instant" is niet standaard
+      });
+    }
+  }, [selectedImageId]);
+
+
+
+ 
+  const filteredImages = imageMetas.filter((img) =>
+    img.fileName.toLowerCase().includes(searchQuery.toLowerCase())
   );
-  if (rowElement) {
-    rowElement.scrollIntoView({
-      block: "nearest",
-      behavior: "instant",
-    });
-  }
-}, [selectedFile]);
 
-  const filteredFiles = files.filter((f) =>
-    f.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  
   const ROW_H = 24; // row height for file list
   const VISIBLE_ROWS = 7;
 
@@ -243,17 +315,12 @@ useEffect(() => {
       ref={rootRef}
       className="min-h-screen flex flex-col bg-gradient-to-b from-[#44F3C9] to-[#3F7790] relative select-none"
     >
-      {/* === AiDx Logo === */}
-      <div className="w-auto">
-        <img
-          src={aidxLogo}
-          alt="AiDx Medical Logo"
-          className="h-[40px] absolute top-[2px] left-[3px]"
-        />
-      </div>
+      {/* === Header === */}
+      <Header  currentUser={currentUser}/>
 
       {/* === Outer container === */}
-      <div className="flex flex-1 items-center justify-center px-[10px] mt-[35px] mb-[12px]">
+      <div className="flex flex-1 items-center justify-center px-[10px] mt-[0px] mb-[12px]">
+        
         <div
           className="rounded-[3px] flex flex-col relative overflow-hidden"
           style={{
@@ -301,7 +368,7 @@ useEffect(() => {
                 userSelect: "text",
               }}
             >
-              Dataset: {decodeURIComponent(datasetName || "Unknown")}
+              Dataset: {dataset?.name || "Unknown"}
             </span>
 
             {/* Current Image Indicator */}
@@ -401,8 +468,8 @@ useEffect(() => {
                 }}
               >
                 <img
-                  src={selectedFile ? IMAGE_MAP[selectedFile] : null}
-                  alt="Microscope View"
+                  src={selectedUrl}
+                  alt={selectedMeta?.fileName || "Microscope View"}
                   draggable="false"
                   style={{
                     width: "100%",
@@ -639,8 +706,8 @@ useEffect(() => {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter" && filteredFiles.length > 0)
-                        setSelectedFile(filteredFiles[0]);
+                      if (e.key === "Enter" && filteredImages.length > 0)
+                        setSelectedImageId(filteredImages[0].id);
                     }}
                     style={{
                       width: "100%",
@@ -678,12 +745,12 @@ useEffect(() => {
                     boxSizing: "border-box",
                   }}
                 >
-                  {filteredFiles.length > 0 ? (
-                    filteredFiles.map((file) => (
+                  {filteredImages.length > 0 ? (
+                    filteredImages.map((img) => (
                       <div
-                        key={file}
-                        data-file={file}
-                        onClick={() => setSelectedFile(file)}
+                        key={img.id}
+                        data-image={img.id}
+                        onClick={() => setSelectedImageId(img.id)}
                         style={{
                           height: `${ROW_H}px`,
                           lineHeight: `${ROW_H}px`,
@@ -691,16 +758,16 @@ useEffect(() => {
                           fontSize: "12.5px",
                           cursor: "pointer",
                           backgroundColor:
-                            selectedFile === file ? "#D9D9D9" : "transparent",
+                            selectedImageId === img.id ? "#D9D9D9" : "transparent",
                           borderBottom: "1px solid rgba(0,0,0,0.04)",
                           userSelect: "none",
                           whiteSpace: "nowrap",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
                         }}
-                        title={file}
+                        title={img.fileName}
                       >
-                        {file}
+                        {img.fileName}
                       </div>
                     ))
                   ) : (
@@ -865,7 +932,7 @@ useEffect(() => {
           {/* === Feedback Request Popup === */}
           {showFeedbackRequest && (
             <FeedbackRequest
-              fileName={selectedFile || "No file selected"}
+              fileName={selectedMeta?.fileName || "No file selected"}
               onClose={() => setShowFeedbackRequest(false)}
               onSubmit={(remarks) => {
                 const success = true;
@@ -895,22 +962,22 @@ useEffect(() => {
             />
           )}
           {/* === Image Deletion Popup === */}
-{showImageDeletion && (
-  <ImageDeletion
-    fileName={selectedFile}
-    onClose={() => setShowImageDeletion(false)}
-    onSubmit={(reason) => {
-      setToast({
-        message: `Image deleted (${reason})`,
-        type: "success",
-      });
-    }}
-  />
-)}
+          {showImageDeletion && (
+            <ImageDeletion
+              fileName={selectedMeta?.fileName}
+              onClose={() => setShowImageDeletion(false)}
+              onSubmit={(reason) => {
+                setToast({
+                  message: `Image deleted (${reason})`,
+                  type: "success",
+                });
+              }}
+            />
+          )}
 
 
-                  </div>
-                </div>
+        </div>
+      </div>
 
       {/* === Category Popup === */}
       {showCategoryPopup && (

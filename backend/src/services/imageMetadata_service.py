@@ -18,17 +18,15 @@ class MetadataService:
   
 #-----------------------------------------------------------------------------------------------------------------------
 
-    async def get_images_by_dataset(self, dataset_id: str, current_User: UserDto | None = None) -> List[ImageMetadataDto]:
-        images = await self.image_repo.get_image_by_dataset_id(dataset_id)
+    async def get_images_by_dataset(self, dataset_id: str, current_user: UserDto | None, limit: int | None, offset: int) -> List[ImageMetadataDto]:
+        images = await self.image_repo.get_image_by_dataset_id(dataset_id, limit, offset)
         if not images:
             return []
 
         images_dto = [
-            self.to_dto(image)
-            
+            self.to_dto(image)   
             for image in images
         ]
-
         return images_dto
 
     
@@ -47,7 +45,7 @@ class MetadataService:
             raise ValueError("dataset_id is required")
 
         # haal alle images van de dataset
-        images_in_dataset = await self.image_repo.get_image_by_dataset_id(dataset_id)
+        images_in_dataset = await self.image_repo.get_image_by_dataset_id(dataset_id, limit = None, offset=0)
         if not images_in_dataset:
             raise NotFoundError(f"Images with dataset id: {dataset_id} not found")
         
@@ -91,7 +89,7 @@ class MetadataService:
             raise ValueError("dataset_id is required")
 
         # haal alle images van de dataset
-        images_in_dataset = await self.image_repo.get_image_by_dataset_id(dataset_id)
+        images_in_dataset = await self.image_repo.get_image_by_dataset_id(dataset_id, limit=None, offset=0)
         if not images_in_dataset:
             raise NotFoundError(f"Images with dataset id: {dataset_id} not found")
         
