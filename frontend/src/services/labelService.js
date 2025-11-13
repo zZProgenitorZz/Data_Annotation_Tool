@@ -4,13 +4,13 @@ import api from "../api";
 
 // Create a label
 export async function createLabel(datasetId, label){
-    const response = await api.post("/label/create", datasetId, label);
+    const response = await api.post("/label/create", label, {params: {dataset_id: datasetId},});
     return response.data;
 }
 
 // Get all labels
-export async function getAllLabels() {
-    const response = await api.get("/label/all-labels");
+export async function getAllLabels(datasetId) {
+    const response = await api.get("/label/all-labels", {params: {dataset_id: datasetId},});
     return response.data;
 }
 
@@ -29,5 +29,11 @@ export async function updateLabel(labelId, updatadLabel) {
 // Delete label
 export async function deleteLabel(labelId){
     const response = await api.delete(`/label/delete/${labelId}`)
+    return response.data;
+}
+
+// Delete dataset label
+export async function deleteDatasetLabel(datasetId){
+    const response = await api.delete(`/label/dataset_delete/${datasetId}`)
     return response.data;
 }

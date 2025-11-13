@@ -23,11 +23,11 @@ async def create_label(dataset_id: str, label: Label, current_user: UserDto = De
 
 # Get all labels
 @router.get("/all-labels", response_model=list[LabelDto])
-async def get_all_labels(current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def get_all_labels(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
     try:
         if is_guest_user(current_user):
             return guest_session_service.get_all_labels(current_user.id)
-        return await label_service.get_all_labels(current_user)
+        return await label_service.get_all_labels(dataset_id, current_user)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -49,7 +49,7 @@ async def get_label_by_id(label_id: str, current_user: UserDto = Depends(require
 
 
 # Update a label by ID
-@router.put("/{label_id}", response_model=bool)
+@router.put("/update/{label_id}", response_model=bool)
 async def update_label(label_id: str, updated_label: LabelUpdate, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
     try:
         if is_guest_user(current_user):
@@ -65,7 +65,7 @@ async def update_label(label_id: str, updated_label: LabelUpdate, current_user: 
 
 
 # Delete a label by ID
-@router.delete("/{label_id}", response_model=bool)
+@router.delete("/delete/{label_id}", response_model=bool)
 async def delete_label(label_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
     try:
         if is_guest_user(current_user):
@@ -74,6 +74,21 @@ async def delete_label(label_id: str, current_user: UserDto = Depends(require_ro
                 raise NotFoundError(f"Label {label_id} not found")
             return success
         return await label_service.delete_label(label_id, current_user)
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+#Delete a dataset label
+@router.delete("/dataset_delete/{dataset_id}", response_model=bool)
+async def delete_dataset_label(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+    try:
+        if is_guest_user(current_user):
+            success = guest_session_service.delete_dataset_label(current_user.id, dataset_id)
+            if not success:
+                raise NotFoundError(f"Label with dataset_id {dataset_id} not found")
+            return success
+        return await label_service.delete_dataset_label(dataset_id, current_user)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:

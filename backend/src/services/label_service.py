@@ -15,8 +15,8 @@ class LabelService:
         return success 
     
     # Get all labels
-    async def get_all_labels(self, current_user: UserDto | None = None) -> list[LabelDto]:
-        labels = await self.label_repo.get_all_labels()
+    async def get_all_labels(self, dataset_id: str, current_user: UserDto | None = None) -> list[LabelDto]:
+        labels = await self.label_repo.get_all_labels(dataset_id)
         labels_dto = []
         for label in labels:
             labels_dto.append(
@@ -40,6 +40,13 @@ class LabelService:
         if not success:
             raise NotFoundError(f"Label with id {label_id} not found")
         
+        return success
+    
+    # Delete dataset label
+    async def delete_dataset_label(self, dataset_id: str, current_user: UserDto | None = None) -> bool:
+        success = await self.label_repo.delete_dataset_labels(dataset_id)
+        if not success:
+            raise NotFoundError(f"Label with dataset id {dataset_id} not found")
         return success
 
     # Update a label by id

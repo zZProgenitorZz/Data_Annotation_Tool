@@ -7,8 +7,10 @@ import slider from "../../assets/slider.jpg";
 
 import ImageDeletion from "./components/ImageDeletion";
 import Header from "../../components/Header";
-import { AuthContext } from "../../components/AuthContext";
 import { getSignedUrl, listImages } from "../../services/ImageService";
+import { getAllLabels, createLabel, deleteLabel } from "../../services/labelService";
+import { getGuestImages } from "../../services/ImageService";
+
 // Tool icons
 import boundingBoxTool from "../../assets/bounding-box-tool.png";
 import polygonTool from "../../assets/polygon-tool.png";
@@ -38,6 +40,12 @@ import deleteImageIcon from "../../assets/delete-image.png";
 // Toasts (Pop-ups)
 import Toast from "./components/Toast";
 
+//Authentication
+import { AuthContext } from "../../components/AuthContext";
+
+
+
+
 
 
 
@@ -47,14 +55,11 @@ const AnnotationPage = () => {
   const [selectedTool, setSelectedTool] = useState(null);
   const [showCategoryPopup, setShowCategoryPopup] = useState(false);
   const [categories, setCategories] = useState([
-    "Schistosoma haematobium",
-    "Schistosoma mansoni",
-    "Ascaris lumbricoides",
-    "Brugia malayi",
   ]);
-  const [selectedCategory, setSelectedCategory] = useState("Schistosoma mansoni");
+  const [selectedCategory, setSelectedCategory] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [newCategory, setNewCategory] = useState("");
+  const [reloadCategory, setReloadCategory] = useState("")
 
   const categoryButtonRef = useRef(null);
   const popupRef = useRef(null);
@@ -72,7 +77,8 @@ const AnnotationPage = () => {
   const [urls, setUrls] = useState({});              // { [imageId]: url}
   const [selectedImageId, setSelectedImageId] = useState(null);
 
-  const [loading2, setLoading2] = useState(false)
+  const [imagesLoading, setImagesLoading] = useState(false)
+  const [labelLoading, setLabelLoading] = useState(false)
   const [offset, setOffset] = useState(0)
   const LIMIT = 50;
 
@@ -93,28 +99,57 @@ const AnnotationPage = () => {
 
   // fetch images once dataset is known -------------------
   const fetchImages = async () => {
-    if (!dataset || loading2) return;
-    setLoading2(true);
+    if (!dataset || imagesLoading || loading) return;
+    setImagesLoading(true);
     try {
+      if (authType === "user"){
       const result = await listImages(dataset.id);
       setImageMetas(result); 
-      // hier komg if(!loading && authType === "guest")
-      
+      }
+      if (authType === "guest") {
+        const result = await getGuestImages(dataset.id);
+        setImageMetas(result)
+      }
+
     } catch (err){
-      console.error("Failed to fecht images:", err)
+      console.error("Failed to fetch images:", err)
     } finally {
-      setLoading2(false);
+      setImagesLoading(false);
     }
   }
 
+  // fetch labels
+  const fetchCategorie = async () => {
+    if (!dataset || labelLoading || loading) return;
+    setLabelLoading(true);
+    try {
+      // all auth bij getAllLabels
+      const result = await getAllLabels(dataset.id);
+      setCategories(result);
+     
+    } catch (err) {
+      console.error("Failed to fetch labels:", err)
+    } finally {
+      setLabelLoading(false)
+    }
+  }
+
+  // fetch datasets and categorie using useEffect
   useEffect(() => {
     if (!dataset) return;
     fetchImages();
-  }, [dataset]);
+  }, [dataset, loading, authType]);
+
+  useEffect(() => {
+    if (!dataset) return;
+    fetchCategorie();
+  }, [dataset, reloadCategory]);
 
   //getSignedUrl(get real images)------------ --------------------------------------------
   useEffect(() => {
-    if (imageMetas.length === 0 && !loading && authType === "guest") return
+    // als er geen images zijn of auth nog aan het laden is: niks doen
+    if (imageMetas.length === 0 || loading) return;
+
     let cancelled = false;
 
     async function prefetch() {
@@ -122,34 +157,61 @@ const AnnotationPage = () => {
       const end = Math.min(start + LIMIT, imageMetas.length);
       const slice = imageMetas.slice(start, end);
 
-      const pairs = await Promise.all(
-        slice.map(async (img) => {
-          if (urls[img.id]) return null;
-          try{
-            const {url} = await getSignedUrl(img.id);
-            return [img.id, url];
-          } catch {
-            return [img.id, null];
-          }
-        })
-      );
+      // USER: S3 signed URLs
+      if (authType === "user") {
+        const pairs = await Promise.all(
+          slice.map(async (img) => {
+            if (urls[img.id]) return null; // al bekend
+            try {
+              const { url } = await getSignedUrl(img.id);
+              return [img.id, url];
+            } catch {
+              return [img.id, null];
+            }
+          })
+        );
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      const valid = pairs.filter(Boolean);
-      if (valid.length) {
-        setUrls((prev) => ({
-          ...prev,
-          ...Object.fromEntries(valid),
-        }));
+        const valid = pairs.filter(Boolean);
+        if (valid.length) {
+          setUrls((prev) => ({
+            ...prev,
+            ...Object.fromEntries(valid),
+          }));
+        }
+      }
+
+      // GUEST: data-urls uit base64 (img.data)
+      if (authType === "guest") {
+        const pairs = slice
+          .map((img) => {
+            if (urls[img.id]) return null; // al bekend
+            if (!img.data) return null;    // safety
+
+            const mime = img.contentType || "image/jpeg";
+            const dataUrl = `data:${mime};base64,${img.data}`;
+            return [img.id, dataUrl];
+          })
+          .filter(Boolean);
+
+        if (cancelled) return;
+
+        if (pairs.length) {
+          setUrls((prev) => ({
+            ...prev,
+            ...Object.fromEntries(pairs),
+          }));
+        }
       }
     }
 
     prefetch();
     return () => {
       cancelled = true;
-    }
-  }, [imageMetas, offset, urls])
+    };
+  }, [imageMetas, offset, authType, loading]); // urls kun je weglaten om extra reruns te voorkomen
+
 
   // auto-select first image
   useEffect(() => {
@@ -270,14 +332,46 @@ const AnnotationPage = () => {
     }
   };
 
-  const handleAddCategory = () => {
+  const handleAddCategory = async () => {
     const name = newCategory.trim();
-    if (!name) return;
-    setCategories((prev) => [...prev, name]);
+    if (!name && !dataset) return;
+    const form = {
+      labelName: name,
+      labelDescription: ""
+    };
+    await createLabel(dataset.id, form)
+
     setSelectedCategory(name);
     setNewCategory("");
+    setReloadCategory(name)
     setIsAdding(false);
   };
+
+
+  const handleDeleteCategory = async (cat) => {
+    if (!dataset) return;
+
+    const ok = window.confirm(
+      `Are you sure you want to delete the category "${cat.labelName}"?`
+    );
+    if (!ok) return;
+
+    try {
+      // backend delete (label id)
+      await deleteLabel(cat.id);
+
+      // uit de lijst halen
+      setCategories((prev) => prev.filter((c) => c.id !== cat.id));
+
+      // als dit de geselecteerde was, deselecten
+      if (selectedCategory === cat.labelName) {
+        setSelectedCategory(null);
+      }
+    } catch (err) {
+      console.error("Failed to delete category:", err);
+    }
+  };
+
 
   // drag handlers (header-only)
   const onHeaderMouseDown = (e) => {
@@ -308,7 +402,8 @@ const AnnotationPage = () => {
     document.addEventListener("mouseup", handleUp);
     document.body.style.cursor = "move";
     document.body.style.userSelect = "none";
-  };
+    };
+ 
 
   return (
     <div
@@ -987,7 +1082,7 @@ const AnnotationPage = () => {
             position: "absolute",
             top: popupPosition.top,
             left: popupPosition.left,
-            width: "156px",
+            minWidth: "156px",
             backgroundColor: "#FFFFFF",
             border: "1px solid rgba(0,0,0,0.25)",
             borderRadius: "6px",
@@ -1031,21 +1126,53 @@ const AnnotationPage = () => {
 
           <div style={{ padding: "0 0 4px 0" }}>
             {categories.map((cat) => (
-              <div
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                style={{
-                  padding: "6px 10px",
-                  fontStyle: "italic",
-                  fontSize: "13px",
-                  backgroundColor:
-                    selectedCategory === cat ? "#D9D9D9" : "transparent",
-                  cursor: "pointer",
-                }}
-              >
-                {cat}
-              </div>
-            ))}
+          <div
+            key={cat.id}
+            onClick={() => setSelectedCategory(cat.labelName)}
+            style={{
+              padding: "6px 10px",
+              fontStyle: "italic",
+              fontSize: "13px",
+              backgroundColor:
+                selectedCategory === cat.labelName ? "#D9D9D9" : "transparent",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "6px",
+            }}
+          >
+            <span
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {cat.labelName}
+            </span>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation(); // voorkomt dat het label óók geselecteerd wordt
+                handleDeleteCategory(cat);
+              }}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: "#888",
+                fontWeight: 700,
+                cursor: "pointer",
+                padding: 0,
+                lineHeight: 1,
+              }}
+              title="Delete category"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+
 
             <div
               style={{

@@ -281,13 +281,13 @@ class GuestSessionService:
         """Haal alle images op die bij een dataset horen."""
         session = self._get_session(guest_id)
 
+        images_dict = session.get("images", {})
         images = [
-            img for img in session["images"].values()
-            if img["datasetId"] == dataset_id and img.get("is_active", True)
+            img for img in images_dict.values()
+            if img.get("datasetId") == dataset_id and img.get("is_active", True)
         ]
-        if not images:
-            return []
         return images
+
     
     def get_image(self, guest_id: str, image_id: str) -> tuple[bytes, str]:
         session = self._get_session(guest_id)
@@ -459,6 +459,19 @@ class GuestSessionService:
             return True
         return False
     
+    def delete_dataset_label(self, guest_id: str, dataset_id: str) -> bool:
+        """"Delete dataset labels"""
+        session = self._get_session(guest_id)
+        labels = session.get("labels", {})
+
+        deleted_any = False
+
+        for label_id in list(labels.keys()):
+            if labels[label_id].get("datasetId") == dataset_id:
+                del labels[label_id]
+                deleted_any = True
+
+        return deleted_any
     
 
     

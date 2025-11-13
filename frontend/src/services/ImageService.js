@@ -137,6 +137,11 @@ export async function uploadGuestImages(datasetId, files) {
       },
     }
   );
-
   return res.data; // backend kan bijv. de image-metadata teruggeven
+}
+
+
+export async function getGuestImages(datasetId){
+  const response = await api.get(`/image/guest-images/${datasetId}`)
+  return response.data
 }

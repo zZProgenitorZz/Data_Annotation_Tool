@@ -132,16 +132,15 @@ async def upload_guest_images(
 
 
 
-@router.get("/guest-images/{image_id}")
-async def get_guest_image(
-    image_id: str,
-    current_user = Depends(require_guest_user),
+@router.get("/guest-images/{dataset_id}")
+async def get_guest_images_for_dataset(
+    dataset_id: str,
+    current_user = Depends(require_guest_user()),
 ):
     try:
-        if is_guest_user(current_user):
-            data, content_type = guest_session_service.get_image(current_user.id, image_id)
-            return Response(content=data, media_type=content_type)
-    except NotFoundError as e:
+        images = guest_session_service.get_images_by_dataset(current_user.id, dataset_id)
+        return images   # lijst van dicts / DTO's
+    except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     
 

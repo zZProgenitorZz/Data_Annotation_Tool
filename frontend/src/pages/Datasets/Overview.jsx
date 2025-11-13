@@ -13,6 +13,7 @@ import { softDeleteDataset } from "../../services/datasetService";
 import { AuthContext } from "../../components/AuthContext";
 import { uploadGuestImages } from "../../services/ImageService";
 import Header from "../../components/Header";
+import { deleteDatasetLabel } from "../../services/labelService";
 
 
 const getAssignedUser = async () => {
@@ -157,7 +158,11 @@ const Overview = () => {
       for (const datasetId of selectedDatasets) {
         if (!loading && authType === "user") {
         await soft_Delete_Dataset(datasetId);
+
+        await deleteDatasetLabel(datasetId);
+        
         await hard_Delete_Dataset(datasetId);
+        
         }
         if (!loading && authType === "guest") {
           await softDeleteDataset(datasetId)
