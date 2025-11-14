@@ -85,6 +85,7 @@ class ImageAnnotationsService:
     def to_dto(self, image_annotations: ImageAnnotations) -> ImageAnnotationsDto:
         dto = ImageAnnotationsDto(
             id=str(image_annotations.id),
+            for_remark= image_annotations.for_remark,
             imageId=str(image_annotations.imageId),
             annotations=[
                 AnnotationDto(**a.model_dump()) for a in image_annotations.annotations

@@ -50,6 +50,7 @@ class Annotation(BaseModel):
 # ---- Image model ----
 class ImageAnnotations(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
+    for_remark: bool | None = False
     imageId: Optional[str] = None
     annotations: List[Annotation]
 
@@ -79,6 +80,7 @@ class AnnotationDto(BaseModel):
 # ---- Image model Dto----
 class ImageAnnotationsDto(BaseModel):
     id: Optional[str] = Field(default=None, alias="_id")
+    for_remark: bool | None = False
     imageId: Optional[str] = None
     annotations: List[AnnotationDto] = []
 

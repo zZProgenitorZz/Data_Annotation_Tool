@@ -74,7 +74,25 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
   }
   const nonEditable = baseNonEditable.includes(name);
 
-  if (editMode && !nonEditable) {
+  const isOwner = 
+    !loading &&
+    currentUser && 
+    localData?.createdBy && 
+    localData.createdBy === currentUser.username;
+  
+  
+
+  const isAssigned =
+    !loading && 
+    currentUser &&
+    Array.isArray(localData?.assignedTo) &&
+    localData.assignedTo.includes(currentUser.username);
+
+  const canEditThisRow =
+    editMode && !nonEditable && (isOwner || isAssigned);
+
+
+  if (canEditThisRow) {
     const boxStyle = name === "name" ? datasetBoxStyle : editableBoxStyle;
 
     if (name === "status") {
@@ -114,18 +132,24 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
     }
 
     if (name === "assignedTo" ) {
-      const assignedArray = Array.isArray(value) ? value : (value ? value.split(", ") : []);
+      const assignedIds = Array.isArray(value) ? value : [];
+
       const options = users.map(u => ({
-        value: u.id,
+        value: String(u.id),
         label: `${u.username} (${u.role})`
       }));
+
+      const normalizedAssignedIds = assignedIds.map((id) => String(id));
+      const selectedOptions = options.filter((opt) =>
+        normalizedAssignedIds.includes(opt.value)
+      );
       
       return (
         <div className="grid grid-cols-[120px_163px] gap-x-[8px] mb-[6px] items-center">
           <div className="font-[600] text-[16px] text-[#000000]">{label}:</div>
           <Select
             isMulti
-            value={options.filter(opt => assignedArray.includes(opt.value))}
+            value={selectedOptions}
             onChange={(selected) => handleChange(name, selected.map(opt => opt.value))}
             options={options}
             styles={{
@@ -270,6 +294,8 @@ const DatasetWithRef = ({ dataset, editMode, localDataRef, users }) => {
     localDataRef.current = localData;
   }, [localData, localDataRef]);
 
+
+ 
   const toggleDataset = () => setIsExpanded((s) => !s);
 
   const handleChange = useCallback((field, value) => {

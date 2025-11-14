@@ -45,6 +45,9 @@ async def get_dataset(dataset_id: str, current_user: UserDto = Depends(require_r
         return await dataset_service.get_dataset(dataset_id, current_user)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    
+
+
 
 
 # Update dataset

@@ -34,6 +34,14 @@ export async function deleteLabel(labelId){
 
 // Delete dataset label
 export async function deleteDatasetLabel(datasetId){
-    const response = await api.delete(`/label/dataset_delete/${datasetId}`)
-    return response.data;
+    try{
+        const response = await api.delete(`/label/dataset_delete/${datasetId}`)
+        return response.data;
+    } catch (error){
+        if (error?.response?.status === 404) {
+            return;
+        }
+        console.error("Error deleting dataset label:", error)
+        throw error;
+    }
 }

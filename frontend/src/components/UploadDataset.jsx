@@ -113,6 +113,7 @@ const [errorMessage, setErrorMessage] = useState("");
       },
       files: selectedFiles,   // geef de images mee aan parent
     });
+    setSelectedFiles([]);
     onClose();
   };
 

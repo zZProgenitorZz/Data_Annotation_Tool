@@ -90,8 +90,16 @@ export async function hardDeleteImage(image_id) {
 }
 
 export async function hardDeleteDatasetImages(dataset_id){
-  const {data} = await api.delete(`/image/dataset/${dataset_id}/hard`)
-  return data;
+  try{
+    const {data} = await api.delete(`/image/dataset/${dataset_id}/hard`)
+    return data;
+  } catch (error) {
+      if (error?.response?.status === 404) {
+         return;
+      } 
+      console.error("Error hard deleting dataset images:", error)
+      throw error;
+  }
 }
 
 
@@ -103,9 +111,16 @@ export async function softDeleteImages(datasetId, imageIds) {
     imageIds && imageIds.length
       ? { params: { image_id: imageIds } } // => ?image_id=a&image_id=b&...
       : {};
-
-  const { data } = await api.delete(`/image/${datasetId}/soft`, config);
-  return data; 
+  try{
+      const { data } = await api.delete(`/image/${datasetId}/soft`, config);
+      return data; 
+  } catch (error) {
+      if (error?.response?.status === 404) {
+         return;
+      } 
+      console.error("Error deleting image:", error)
+      throw error;
+  }
 }
 
 export async function softDeleteImage(datasetId, imageId) {
@@ -116,7 +131,6 @@ export async function softDeleteImage(datasetId, imageId) {
 export async function softDeleteDatasetImages(datasetId) {
   return softDeleteImages(datasetId, null);
 }
-
 
 
 

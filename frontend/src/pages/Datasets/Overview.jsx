@@ -158,12 +158,12 @@ const Overview = () => {
       for (const datasetId of selectedDatasets) {
         if (!loading && authType === "user") {
         await soft_Delete_Dataset(datasetId);
-
+               
         await deleteDatasetLabel(datasetId);
-        
+          
         await hard_Delete_Dataset(datasetId);
-        
         }
+
         if (!loading && authType === "guest") {
           await softDeleteDataset(datasetId)
         }
