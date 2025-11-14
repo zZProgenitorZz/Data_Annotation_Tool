@@ -48,11 +48,35 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
   const {currentUser, loading} = useContext(AuthContext);
 
   const getUserNames = (ids) => {
-      return ids.map(id => {
+    if (!ids) return "";
+
+    const list = Array.isArray(ids) ? ids : [ids];
+
+    return list
+      .map(id => {
         const user = users.find(u => u.id === id);
         return user ? user.username : id;
-        });
-      };
+      })
+      .join(", ");
+  };
+
+  const getUserName = (id) => {
+    if (!id) return "";
+
+    if (currentUser && currentUser.id === id){
+      return currentUser.username;
+    }
+
+    if (!Array.isArray(users) || users.length === 0) {
+      return id;
+    }
+
+    const user = users.find(u => u.id === id);
+    return user ? user.username : id
+  }
+
+  
+
 
   const value = localData[name] ?? "";
   const textClass = `font-[400] text-[16px] text-[#000000] ${
@@ -78,7 +102,7 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
     !loading &&
     currentUser && 
     localData?.createdBy && 
-    localData.createdBy === currentUser.username;
+    localData.createdBy === currentUser.id;
   
   
 
@@ -86,7 +110,7 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
     !loading && 
     currentUser &&
     Array.isArray(localData?.assignedTo) &&
-    localData.assignedTo.includes(currentUser.username);
+    localData.assignedTo.includes(currentUser.id);
 
   const canEditThisRow =
     editMode && !nonEditable && (isOwner || isAssigned);
@@ -267,8 +291,10 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
           }}
         >
 
-          {name === "assignedTo" && Array.isArray(value)
-            ? getUserNames(value).join(", ")
+          {name === "assignedTo" 
+            ? getUserNames(value)
+            : name ==="createdBy"
+            ? getUserName(value)
             : name === "createdAt" || name === "updatedAt" || name === "date_of_collection"
             ? new Date(value).toLocaleDateString("nl-NL")
             : value}
@@ -366,7 +392,7 @@ const DatasetWithRef = ({ dataset, editMode, localDataRef, users }) => {
 
       {isExpanded && (
         <div className="px-[14px] pb-[12px] border-t border-[#d1d5db] pt-[10px]">
-          <Row label="Created by" name="createdBy" truncate localData={localData} editMode={editMode} handleChange={handleChange} />
+          <Row label="Created by" name="createdBy" truncate localData={localData} editMode={editMode} handleChange={handleChange} users={users}/>
           <Row label="Assigned to" name="assignedTo" truncate localData={localData} editMode={editMode} handleChange={handleChange} users ={users}/>
           <Row label="Created at" name="createdAt" localData={localData} editMode={editMode} handleChange={handleChange} />
           <Row label="Last updated" name="updatedAt" localData={localData} editMode={editMode} handleChange={handleChange} />
