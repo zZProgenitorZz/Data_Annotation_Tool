@@ -5,7 +5,7 @@ import selectedBox from "../../assets/selectedbox.png";
 import { getAllDatasets, updateDataset } from "../../services/datasetService";
 import DatasetWrapper from "./DatasetCard"
 import { getAllUsers } from "../../services/authService";
-import getChangedFields from "../../utils/utils";
+import {getChangedFields, extractUserId } from "../../utils/utils";
 import { uploadImagesToS3 } from "../../utils/uploadImagesToS3";
 import { createDataset } from "../../services/datasetService";
 import { soft_Delete_Dataset, hard_Delete_Dataset } from "../../utils/deleteDataset";
@@ -189,7 +189,9 @@ const Overview = () => {
   const handleSaveDataset = async ({ dataset, files }) => {
     try {
       // 1) dataset aanmaken in backend
+      console.log(dataset)
       const created = await createDataset(dataset);
+      console.log("ss")
       const datasetId = created;
      
 
@@ -211,6 +213,7 @@ const Overview = () => {
           await uploadGuestImages(datasetId, files);
         }
       }
+      
       // 3) Datasets opnieuw ophalen (i.p.v. window.location.reload)
       await fetchDatasets();
 

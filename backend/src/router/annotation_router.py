@@ -14,7 +14,7 @@ annotation_service = ImageAnnotationsService()
 
 # Create new image annotations
 @router.post("/", response_model=str)
-async def create_image_annotations(image_id: str, image_annotations: ImageAnnotations, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def create_image_annotations(image_id: str, image_annotations: ImageAnnotations, current_user: UserDto = Depends(require_roles(["admin","user"]))):
     try:
         if is_guest_user(current_user):
             return guest_session_service.create_image_annotations(current_user.id, image_id, image_annotations)
@@ -27,7 +27,7 @@ async def create_image_annotations(image_id: str, image_annotations: ImageAnnota
 
 # Get all image annotations
 @router.get("/all-image", response_model=List[ImageAnnotationsDto])
-async def get_all_image_annotations(current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def get_all_image_annotations(current_user: UserDto = Depends(require_roles(["admin", "user"]))):
     try:
         if is_guest_user(current_user):
             return list(guest_session_service._get_session(current_user.id)["annotations"].values())
@@ -40,7 +40,7 @@ async def get_all_image_annotations(current_user: UserDto = Depends(require_role
 
 # Get annotations for a specific image
 @router.get("/{image_id}/annotations", response_model=List[AnnotationDto])
-async def get_annotations_for_image(image_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def get_annotations_for_image(image_id: str, current_user: UserDto = Depends(require_roles(["admin", "user"]))):
     try:
         if is_guest_user(current_user):
             return guest_session_service.get_annotations_for_image(current_user.id, image_id)
@@ -55,7 +55,7 @@ async def get_annotations_for_image(image_id: str, current_user: UserDto = Depen
 
 # Add a single annotation to an image
 @router.post("/{image_id}/add", response_model=bool)
-async def add_annotation_to_image(image_id: str, annotation: Annotation, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def add_annotation_to_image(image_id: str, annotation: Annotation, current_user: UserDto = Depends(require_roles(["admin", "user"]))):
     try:
         if is_guest_user(current_user):
             return guest_session_service.add_annotation_to_image(current_user.id, image_id, annotation)
@@ -70,7 +70,7 @@ async def add_annotation_to_image(image_id: str, annotation: Annotation, current
 
 # Delete a single annotation from an image
 @router.delete("/{image_id}/{annotation_id}", response_model=bool)
-async def delete_single_annotation(image_id: str, annotation_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def delete_single_annotation(image_id: str, annotation_id: str, current_user: UserDto = Depends(require_roles(["admin", "user"]))):
     try:
         if is_guest_user(current_user):
             return guest_session_service.delete_single_annotation(current_user.id, image_id, annotation_id)
@@ -83,7 +83,7 @@ async def delete_single_annotation(image_id: str, annotation_id: str, current_us
 
 # Delete all annotations for a given image
 @router.delete("/{image_id}", response_model=bool)
-async def delete_image_annotations(image_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def delete_image_annotations(image_id: str, current_user: UserDto = Depends(require_roles(["user", "admin"]))):
     try:
         if is_guest_user(current_user):
             return guest_session_service.delete_image_annotations(current_user.id, image_id)

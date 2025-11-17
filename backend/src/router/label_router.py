@@ -12,7 +12,7 @@ label_service = LabelService()
 
 # Create a new label
 @router.post("/create", response_model=str, status_code=status.HTTP_201_CREATED)
-async def create_label(dataset_id: str, label: Label, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def create_label(dataset_id: str, label: Label, current_user: UserDto = Depends(require_roles(["admin", "user"]))):
     try:
         if is_guest_user(current_user):
             return guest_session_service.create_label(dataset_id, current_user.id, label)
@@ -23,7 +23,7 @@ async def create_label(dataset_id: str, label: Label, current_user: UserDto = De
 
 # Get all labels
 @router.get("/all-labels", response_model=list[LabelDto])
-async def get_all_labels(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def get_all_labels(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin", "user"]))):
     try:
         if is_guest_user(current_user):
             return guest_session_service.get_all_labels(current_user.id)
@@ -34,7 +34,7 @@ async def get_all_labels(dataset_id: str, current_user: UserDto = Depends(requir
 
 # Get label by ID
 @router.get("/{label_id}", response_model=LabelDto)
-async def get_label_by_id(label_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def get_label_by_id(label_id: str, current_user: UserDto = Depends(require_roles(["admin", "user"]))):
     try:
         if is_guest_user(current_user):
             label = guest_session_service.get_label_by_id(current_user.id, label_id)
@@ -50,7 +50,7 @@ async def get_label_by_id(label_id: str, current_user: UserDto = Depends(require
 
 # Update a label by ID
 @router.put("/update/{label_id}", response_model=bool)
-async def update_label(label_id: str, updated_label: LabelUpdate, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def update_label(label_id: str, updated_label: LabelUpdate, current_user: UserDto = Depends(require_roles(["admin","user"]))):
     try:
         if is_guest_user(current_user):
             success = guest_session_service.update_label(current_user.id, label_id, updated_label)
@@ -66,7 +66,7 @@ async def update_label(label_id: str, updated_label: LabelUpdate, current_user: 
 
 # Delete a label by ID
 @router.delete("/delete/{label_id}", response_model=bool)
-async def delete_label(label_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def delete_label(label_id: str, current_user: UserDto = Depends(require_roles(["admin", "user"]))):
     try:
         if is_guest_user(current_user):
             success = guest_session_service.delete_label(current_user.id, label_id)
@@ -81,7 +81,7 @@ async def delete_label(label_id: str, current_user: UserDto = Depends(require_ro
     
 #Delete a dataset label
 @router.delete("/dataset_delete/{dataset_id}", response_model=bool)
-async def delete_dataset_label(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def delete_dataset_label(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin","user"]))):
     try:
         if is_guest_user(current_user):
             success = guest_session_service.delete_dataset_label(current_user.id, dataset_id)

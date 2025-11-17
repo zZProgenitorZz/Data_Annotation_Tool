@@ -44,14 +44,14 @@ class CompleteRequest(BaseModel):
     height: int | None = None
 
 @router.post("/images/complete")
-async def complete_image(body: CompleteRequest, current_user: UserDto = Depends(require_roles(["admin","reviewer","annotator"]))):
+async def complete_image(body: CompleteRequest, current_user: UserDto = Depends(require_roles(["admin","user"]))):
     try:
         return await image_service.complete_upload(body.imageId,current_user, body.checksum, body.width, body.height)
     except NotFoundError as e:
         raise HTTPException(404, str(e))
     
 @router.post("/images/complete-bulk")
-async def complete_images_bulk(items: List[CompleteRequest], current_user: UserDto = Depends(require_roles(["admin","reviewer","annotator"]))):
+async def complete_images_bulk(items: List[CompleteRequest], current_user: UserDto = Depends(require_roles(["admin","user"]))):
     try:
         return await image_service.complete_upload_bulk([i.model_dump() for i in items], current_user)
     except NotFoundError as e:
@@ -59,7 +59,7 @@ async def complete_images_bulk(items: List[CompleteRequest], current_user: UserD
 
 
 @router.get("/images/{image_id}/signed-url")
-async def get_signed_url(image_id: str, current_user: UserDto = Depends(require_roles(["admin","reviewer","annotator"]))):
+async def get_signed_url(image_id: str, current_user: UserDto = Depends(require_roles(["admin","user"]))):
     try:
         return await image_service.get_signed_url(image_id, current_user)
     except NotFoundError as e:
@@ -68,7 +68,7 @@ async def get_signed_url(image_id: str, current_user: UserDto = Depends(require_
 
 # Get images from dataset
 @router.get("/{dataset_id}/all-images", response_model=list[ImageMetadataDto])
-async def get_images(dataset_id: str, limit: Optional[int] = Query(None, ge=1, le=200) , offset: int = Query(0, ge=0) ,current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def get_images(dataset_id: str, limit: Optional[int] = Query(None, ge=1, le=200) , offset: int = Query(0, ge=0) ,current_user: UserDto = Depends(require_roles(["admin","user"]))):
     try:
         if is_guest_user(current_user):
             return guest_session_service.get_images_by_dataset(current_user.id, dataset_id)
@@ -79,7 +79,7 @@ async def get_images(dataset_id: str, limit: Optional[int] = Query(None, ge=1, l
 
 # Soft delete images for user and hard delete for guest
 @router.delete("/{dataset_id}/soft", response_model=int)
-async def soft_delete_images(dataset_id: str, image_id: list[str] | None = None, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def soft_delete_images(dataset_id: str, image_id: list[str] | None = None, current_user: UserDto = Depends(require_roles(["admin", "user"]))):
     try:
         if is_guest_user(current_user):
             return guest_session_service.delete_images(current_user.id, dataset_id, image_id)
@@ -89,7 +89,7 @@ async def soft_delete_images(dataset_id: str, image_id: list[str] | None = None,
 
 # Restore images
 @router.put("/{dataset_id}/restore", response_model=int)
-async def restore_image(dataset_id: str, image_id: list[str] | None = None, current_user: UserDto = Depends(require_roles(["admin", "reviewer"]))):
+async def restore_image(dataset_id: str, image_id: list[str] | None = None, current_user: UserDto = Depends(require_roles(["admin", "user"]))):
     try:
         return await metadata_service.restore_images(image_id, dataset_id, current_user)
     except NotFoundError as e:
@@ -97,7 +97,7 @@ async def restore_image(dataset_id: str, image_id: list[str] | None = None, curr
 
 # Hard delete single image
 @router.delete("/{image_id}/hard", response_model=bool)
-async def hard_delete_image(image_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer"]))):
+async def hard_delete_image(image_id: str, current_user: UserDto = Depends(require_roles(["admin", "user"]))):
     try:
         return await image_service.hard_delete_image(image_id, current_user)
     except NotFoundError as e:
@@ -106,7 +106,7 @@ async def hard_delete_image(image_id: str, current_user: UserDto = Depends(requi
 
 # Hard delete all images in dataset
 @router.delete("/dataset/{dataset_id}/hard", response_model=int)
-async def hard_delete_dataset_images(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer"]))):
+async def hard_delete_dataset_images(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin", "user"]))):
     try:
         return await image_service.hard_delete_dataset_images(dataset_id, current_user)
     except NotFoundError as e:

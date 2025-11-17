@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useContext } from "rea
 import Select from "react-select";
 import { AuthContext } from "../../components/AuthContext";
 import { useNavigate } from "react-router-dom";
+import {extractUserId, parseAssignedTo, extractUserRole, buildAssignedTo} from "../../utils/utils"
 
 // Up arrow icon (at the bottom of each dataset card)
 
@@ -47,23 +48,27 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
 
   const {currentUser, loading} = useContext(AuthContext);
 
-  const getUserNames = (ids) => {
-    if (!ids) return "";
+  const getUserNames = (entries) => {
+    if (!entries) return "";
 
-    const list = Array.isArray(ids) ? ids : [ids];
+    const list = Array.isArray(entries) ? entries : [entries];
 
     return list
-      .map(id => {
-        const user = users.find(u => u.id === id);
+      .map((entry) => {
+        const id = extractUserId(entry);
+        const user = Array.isArray(users)
+          ? users.find((u) => String(u.id) === id)
+          : null;
         return user ? user.username : id;
       })
       .join(", ");
   };
 
-  const getUserName = (id) => {
-    if (!id) return "";
+  const getUserName = (entryOrId) => {
+    if (!entryOrId) return "";
+    const id = extractUserId(entryOrId);
 
-    if (currentUser && currentUser.id === id){
+    if (currentUser && String(currentUser.id) === String(id)) {
       return currentUser.username;
     }
 
@@ -71,11 +76,10 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
       return id;
     }
 
-    const user = users.find(u => u.id === id);
-    return user ? user.username : id
-  }
+    const user = users.find((u) => String(u.id) === String(id));
+    return user ? user.username : id;
+  };
 
-  
 
 
   const value = localData[name] ?? "";
@@ -91,11 +95,11 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
     "completed_Images"
   ];
 
-  if (!loading){
-    if (currentUser.role === "annotator") {
-      baseNonEditable.push("assignedTo");
-    } 
-  }
+  //if (!loading){
+  // if (currentUser.role === "user") {
+  //    baseNonEditable.push("assignedTo");
+  //  } 
+  //}
   const nonEditable = baseNonEditable.includes(name);
 
   const isOwner = 
@@ -110,7 +114,7 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
     !loading && 
     currentUser &&
     Array.isArray(localData?.assignedTo) &&
-    localData.assignedTo.includes(currentUser.id);
+    localData.assignedTo.map(extractUserId).includes(String(currentUser.id));
 
   const canEditThisRow =
     editMode && !nonEditable && (isOwner || isAssigned);
@@ -156,26 +160,85 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
     }
 
     if (name === "assignedTo" ) {
-      const assignedIds = Array.isArray(value) ? value : [];
+      const rawAssigned = Array.isArray(value) 
+      ? value 
+      : value
+      ? [value]
+      : [];
 
-      const options = users.map(u => ({
-        value: String(u.id),
-        label: `${u.username} (${u.role})`
-      }));
+       // Maak er nette objecten van: {id, role}
+      const assignedInfo = rawAssigned
+        .map((entry) => ({
+          id: extractUserId(entry),
+          role: extractUserRole(entry),
+        }))
+        .filter((item) => item.id); // filter lege entries
+          
+      const assignedIds = assignedInfo.map((item) => item.id);
 
-      const normalizedAssignedIds = assignedIds.map((id) => String(id));
+      // Alle users als opties voor de hoofd-select
+      const options = Array.isArray(users)
+        ? users.map((u) => ({
+            value: String(u.id),
+            label: u.username,
+          }))
+          : [];
+
+      const roleOptions = [
+        { value: "annotator", label: "Annotator" },
+        { value: "reviewer", label: "Reviewer" },
+      ];
+
       const selectedOptions = options.filter((opt) =>
-        normalizedAssignedIds.includes(opt.value)
+        assignedIds.includes(opt.value)
       );
+
+      // Als de userlijst in de multi-select verandert (toevoegen/verwijderen)
+      const handleUserSelectChange = (selected) => {
+        const selectedIds = (selected || []).map((opt) => opt.value);
+
+        const updatedAssignedInfo = selectedIds.map((id) => {
+          // probeer bestaande info (dus bestaande role) te behouden
+          const existing = assignedInfo.find((info) => info.id === id);
+          if (existing) return existing;
+
+          const user = users.find((u) => String(u.id) === id);
+          // default rol: user.role of anders "annotator"
+          return {
+            id,
+            role: user?.role || "annotator",
+          };
+        });
+          // Bouw weer de "id - role" strings voor localData
+        const newValue = updatedAssignedInfo.map((info) =>
+          info.role ? `${info.id} - ${info.role}` : info.id
+        );
+
+        handleChange(name, newValue);
+      };
       
+      // Als de rol per user wordt aangepast
+      const handleRoleChange = (userId, newRole) => {
+        const updatedAssignedInfo = assignedInfo.map((info) =>
+          info.id === userId ? { ...info, role: newRole } : info
+        );
+
+        const newValue = updatedAssignedInfo.map((info) =>
+          info.role ? `${info.id} - ${info.role}` : info.id
+        );
+
+        handleChange(name, newValue);
+      };
+
       return (
         <div className="grid grid-cols-[120px_163px] gap-x-[8px] mb-[6px] items-center">
           <div className="font-[600] text-[16px] text-[#000000]">{label}:</div>
           <Select
             isMulti
-            value={selectedOptions}
-            onChange={(selected) => handleChange(name, selected.map(opt => opt.value))}
             options={options}
+            value={selectedOptions}
+            onChange={handleUserSelectChange}
+            
             styles={{
               
               control: (base, state) => ({
@@ -230,8 +293,55 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
               }),
               
             }}
-            placeholder="Select Users."
+         
           />
+          {/* Hier: per geselecteerde user een rol-select */}
+          <div className="mt-2 space-y-2">
+            {assignedInfo.map((item) => {
+              const userOption = options.find(
+                (opt) => opt.value === item.id
+              );
+              const displayName = userOption?.label || item.id;
+
+              const selectedRole =
+                roleOptions.find((opt) => opt.value === item.role) || null;
+
+              return (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-2"
+                >
+                  {/* Naam van de user */}
+                  <span className="min-w-[129px] text-sm text-black">
+                    {displayName}
+                  </span>
+
+                  {/* Select voor rollen (Annotator/Reviewer) */}
+                  <Select
+                    
+                    options={roleOptions}
+                    value={selectedRole}
+                    onChange={(option) => {
+                      handleRoleChange(item.id, option?.value || null)
+                    }}
+                    placeholder="Select roles"
+                    styles={{
+                      control: (base) => ({
+                        ...base,
+                        maxHeight: "12px",
+                        minWidth: "162px",
+                        borderColor: "#D1D5DB",
+                      }),
+                      placeholder: (base) => ({
+                        ...base,
+                        fontSize: "12px",
+                      }),
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </div>
       );
     }
@@ -291,13 +401,14 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
           }}
         >
 
-          {name === "assignedTo" 
-            ? getUserNames(value)
-            : name ==="createdBy"
+          {name === "assignedTo"
+            ? getUserNames(value) // value kan array of string zijn, helper regelt de rest
+            : name === "createdBy"
             ? getUserName(value)
             : name === "createdAt" || name === "updatedAt" || name === "date_of_collection"
             ? new Date(value).toLocaleDateString("nl-NL")
             : value}
+
         </div>
       )}
     </div>
@@ -420,6 +531,26 @@ const DatasetWithRef = ({ dataset, editMode, localDataRef, users }) => {
 // Wrapper component to expose local state via ref
 const DatasetWrapper = React.forwardRef(({ dataset, editMode, users}, ref) => {
   const localDataRef = useRef(dataset);
+  const assignedRolesRef = useRef({});
+
+  useEffect(() => {
+    if (!dataset) return;
+
+    // sync de ref met de nieuwste prop
+    localDataRef.current = dataset;
+
+    // maak map { userId: role }
+    const map = parseAssignedTo(dataset.assignedTo);
+    assignedRolesRef.current = map;
+
+    // eventueel opslaan in localStorage per datasetId
+    try {
+      const key = `datasetAssigned:${dataset.id}`;
+      localStorage.setItem(key, JSON.stringify(map));
+    } catch (e) {
+      console.error("Failed to write assigned users to localStorage", e);
+    }
+  }, [dataset]);
   
   React.useImperativeHandle(ref, () => ({
     getLocalData: () => localDataRef.current

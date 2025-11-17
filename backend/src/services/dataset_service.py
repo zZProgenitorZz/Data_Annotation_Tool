@@ -37,10 +37,12 @@ class DatasetService:
 
             assigned_to_usernames = []
             if dataset_data.assignedTo:
-                for user_id in dataset_data.assignedTo:
-                    user = await self.user_repo.get_user_by_id(str(user_id))
+                for user_id_role in (dataset_data.assignedTo or []):
+                    user_id = str(user_id_role).split(" - ", 1)[0].strip()
+                    user = await self.user_repo.get_user_by_id(user_id)
                     if user:
                         assigned_to_usernames.append(user.username)
+
             
 
             await self.log.log_action(

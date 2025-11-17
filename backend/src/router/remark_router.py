@@ -14,7 +14,7 @@ remark_service = RemarkService()
 
 # Create a new remark
 @router.post("/", response_model=str)
-async def create_remark(remark: Remark, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def create_remark(remark: Remark, current_user: UserDto = Depends(require_roles(["admin", "user"]))):
     try:
         return await remark_service.create_remark(remark, current_user)
     except ValidationError as e:
@@ -25,7 +25,7 @@ async def create_remark(remark: Remark, current_user: UserDto = Depends(require_
 
 # Get all remarks
 @router.get("/all-remark", response_model=List[RemarkDTO])
-async def get_all_remarks(current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def get_all_remarks(current_user: UserDto = Depends(require_roles(["admin","user"]))):
     try:
         return await remark_service.get_all_remarks(current_user)
     except NotFoundError as e:
@@ -36,7 +36,7 @@ async def get_all_remarks(current_user: UserDto = Depends(require_roles(["admin"
 
 # Get a single remark by ID
 @router.get("/{remark_id}", response_model=RemarkDTO)
-async def get_remark_by_id(remark_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def get_remark_by_id(remark_id: str, current_user: UserDto = Depends(require_roles(["admin", "user"]))):
     try:
         return await remark_service.get_remark_by_id(remark_id, current_user)
     except NotFoundError as e:
@@ -47,7 +47,7 @@ async def get_remark_by_id(remark_id: str, current_user: UserDto = Depends(requi
 
 # Update a remark
 @router.put("/{remark_id}", response_model=bool)
-async def update_remark(remark_id: str, updated_remark: RemarkUpdate, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def update_remark(remark_id: str, updated_remark: RemarkUpdate, current_user: UserDto = Depends(require_roles(["admin","user"]))):
     try:
         return await remark_service.update_remark(remark_id, updated_remark, current_user)
     except NotFoundError as e:
@@ -58,7 +58,7 @@ async def update_remark(remark_id: str, updated_remark: RemarkUpdate, current_us
 
 # Delete a remark
 @router.delete("/{remark_id}", response_model=bool)
-async def delete_remark(remark_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def delete_remark(remark_id: str, current_user: UserDto = Depends(require_roles(["admin","user"]))):
     try:
         return await remark_service.delete_remark(remark_id, current_user)
     except NotFoundError as e:

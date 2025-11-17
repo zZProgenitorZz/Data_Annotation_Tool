@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useContext } from "react";
 import Select from "react-select";
 import { AuthContext } from "./AuthContext";
+import {buildAssignedTo, parseAssignedFromDataset} from "../utils/utils"
 
 const UploadDataset = ({ isOpen, onClose, users, onSave, datasetToEdit }) => {
 const [errorMessage, setErrorMessage] = useState("");
@@ -30,24 +31,34 @@ const [errorMessage, setErrorMessage] = useState("");
   const fileInputRef = useRef(null);
   const { currentUser } = useContext(AuthContext);
 
+   //  roles per userId: { "id1": "annotator", "id2": "reviewer" }
+  const [userRoles, setUserRoles] = useState({}); 
+
+
+
   useEffect(() => {
     if (isOpen) {
       if (datasetToEdit) {
+        
+      // assignedTo van backend naar ids + rollen
+        const { ids, rolesMap } = parseAssignedFromDataset(
+          datasetToEdit.assignedTo
+        );
+
         setFormData({
           ...initialFormData,
           ...datasetToEdit,
-          assignedTo: Array.isArray(datasetToEdit.assignedTo)
-            ? datasetToEdit.assignedTo
-            : datasetToEdit.assignedTo
-            ? String(datasetToEdit.assignedTo).split(", ")
-            : [],
+          assignedTo: ids, // alleen userIds in formdata
         });
+
+        setUserRoles(rolesMap)
 
         // Bij edit kun je evt. de bestaande total_Images tonen
         setSelectedFolderName("");
         setSelectedImageCount(datasetToEdit.total_Images || 0);
       } else {
         setFormData(initialFormData);
+        setUserRoles({});
         setSelectedFolderName("");
         setSelectedImageCount(0);
       }
@@ -84,7 +95,6 @@ const [errorMessage, setErrorMessage] = useState("");
     // 🔹 UI info
     setSelectedFolderName(folderName);
     setSelectedImageCount(imageFiles.length);
-
     setSelectedFiles(imageFiles);
 
     // For backend: total_iamges
@@ -95,6 +105,24 @@ const [errorMessage, setErrorMessage] = useState("");
     }));
   };
 
+  //  options voor user-select, altijd als string
+  const assignedOptions = users.map((u) => ({
+    value: String(u.id),
+    label: `${u.username}`,
+  }));
+
+  //  assignedArray = alleen userIds (strings)
+  const assignedArray = Array.isArray(formData.assignedTo)
+    ? formData.assignedTo.map((id) => String(id))
+    : [];
+
+  const roleOptions = [
+    { value: "annotator", label: "Annotator" },
+    { value: "reviewer", label: "Reviewer" },
+  ];
+
+  
+
   const handleSave = () => {
     if (!formData.date_of_collection || formData.date_of_collection.trim() === "") {
     setErrorMessage("Please fill in the date of sample collection.");
@@ -104,16 +132,28 @@ const [errorMessage, setErrorMessage] = useState("");
     setErrorMessage("Please fill in the dataset name");
     return;
     }
+        // check: voor elke user een role gekozen?
+    for (const id of assignedArray) {
+      if (!userRoles[id]) {
+        setErrorMessage("Please select a role for each assigned user.");
+        return;
+      }
+    }
+
+    // bouw final ["id - role"] lijst voor backend
+    const finalAssignedTo = buildAssignedTo(assignedArray, userRoles);
     
     onSave({
       dataset: {
         ...formData,
+        assignedTo: finalAssignedTo,   // backend krijgt "id - role"
         status: "Pending review",
         createdBy: currentUser?.id,
       },
       files: selectedFiles,   // geef de images mee aan parent
     });
     setSelectedFiles([]);
+    setErrorMessage("")
     onClose();
   };
 
@@ -137,16 +177,7 @@ const [errorMessage, setErrorMessage] = useState("");
     onMouseUp: (e) => (e.currentTarget.style.filter = "brightness(0.95)"),
   };
 
-  const assignedOptions = users.map((u) => ({
-    value: u.id,
-    label: `${u.username} (${u.role})`,
-  }));
 
-  const assignedArray = Array.isArray(formData.assignedTo)
-    ? formData.assignedTo
-    : formData.assignedTo
-    ? String(formData.assignedTo).split(", ")
-    : [];
 
   return (
     <div
@@ -267,12 +298,12 @@ const [errorMessage, setErrorMessage] = useState("");
             value={assignedOptions.filter((opt) =>
               assignedArray.includes(opt.value)
             )}
-            onChange={(selected) =>
-              handleChange(
-                "assignedTo",
-                (selected || []).map((opt) => opt.value)
-              )
-            }
+            onChange={(selected) => {
+              const ids = Array.isArray(selected)
+                ? selected.map((opt) => String(opt.value))
+                : [];
+              handleChange("assignedTo", ids);
+            }}
             placeholder="Assign to"
             styles={{
               control: (base, state) => ({
@@ -321,12 +352,61 @@ const [errorMessage, setErrorMessage] = useState("");
               }),
             }}
           />
+          {/* Hier: per geselecteerde user een rol-select */}
+          <div className="mt-2 space-y-2">
+            {assignedArray.map((userId) => {
+              const userOption = assignedOptions.find((opt) => opt.value === userId);
+              const label = userOption?.label || userId;
+              const selectedRole = userRoles[userId] || null;
+
+
+              return (
+                <div
+                  key={userId}
+                  className="flex items-center gap-2"
+                >
+                  {/* Naam van de user */}
+                  <span className="min-w-[150px] text-sm text-black">
+                    {label}
+                  </span>
+
+                  {/* Select voor rollen (Annotator/Reviewer) */}
+                  <Select
+                    
+                    options={roleOptions}
+                    value={
+                      roleOptions.find((opt) => opt.value === selectedRole) || null
+                    }
+                    onChange={(option) => {
+                      const role = option?.value || null;
+                      setUserRoles((prev) => ({
+                        ...prev,
+                        [userId]: role,
+                      }));
+                    }}
+                    placeholder="Select roles"
+                    styles={{
+                      control: (base) => ({
+                        ...base,
+                        minHeight: "32px",
+                        borderColor: "#D1D5DB",
+                      }),
+                      placeholder: (base) => ({
+                        ...base,
+                        fontSize: "12px",
+                      }),
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </div>
 
           {/* date_of_collection */}
           <input
             type="date"
             name="date_of_collection"
-            placeholder="Date of sample collection (yyyy-mm-dd)"
+            placeholder="Date of sample collection (dd-mm-jjjj)"
             value={formData.date_of_collection}
             onChange={handleChange}
             
