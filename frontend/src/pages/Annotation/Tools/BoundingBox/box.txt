@@ -1,0 +1,67 @@
+1. Wat zijn w en h?
+
+w = breedte van de box, als deel van de afbeelding.
+
+h = hoogte van de box, als deel van de afbeelding.
+
+Voorbeeld:
+
+Afbeelding is 1000 pixels breed, 800 pixels hoog.
+
+Box is 200px breed, 160px hoog.
+
+Dan:
+
+w = 200 / 1000 = 0.2
+
+h = 160 / 800 = 0.2
+
+Dus w = 0.2 betekent: “deze box is 20% van de breedte van de image”.
+
+2. Wat zijn x en y?
+
+In jouw code betekenen x en y:
+
+de linkerbovenhoek van de box, genormaliseerd t.o.v. de afbeelding.
+
+x = 0 → helemaal links in de afbeelding
+
+x = 1 → helemaal rechts (buiten bereik, want je clamped naar max 1 − w)
+
+y = 0 → helemaal boven
+
+y = 1 → helemaal onder (idem met 1 − h)
+
+Voorbeeld:
+
+Afbeelding: 1000 × 800 pixels
+
+Box begint op pixel (100, 160) (linkerbovenhoek)
+
+Box is 200 × 160 pixels groot
+
+Genormaliseerd:
+
+x = 100 / 1000 = 0.1
+
+y = 160 / 800 = 0.2
+
+w = 200 / 1000 = 0.2
+
+h = 160 / 800 = 0.2
+
+
+
+
+3. Hoe verhoudt dit zich tot YOLO?
+
+YOLO wil:
+
+x_center, y_center, width, height (allemaal 0–1).
+
+Met jouw waarden:
+
+x_center = x + w / 2;
+y_center = y + h / 2;
+width    = w;
+height   = h;

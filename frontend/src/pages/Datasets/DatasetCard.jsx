@@ -64,9 +64,8 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
       .join(", ");
   };
 
-  const getUserName = (entryOrId) => {
-    if (!entryOrId) return "";
-    const id = extractUserId(entryOrId);
+  const getUserName = (id) => {
+    if (!id) return "";
 
     if (currentUser && String(currentUser.id) === String(id)) {
       return currentUser.username;
@@ -77,10 +76,12 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
     }
 
     const user = users.find((u) => String(u.id) === String(id));
-    return user ? user.username : id;
-  };
-
-
+      return user ? user.username : "Admin";
+    };
+  
+  const key = `datasetAssigned:${localData.id}`;
+  const stored = localStorage.getItem(key);
+  const isAnnotators = stored ? JSON.parse(stored) : {};
 
   const value = localData[name] ?? "";
   const textClass = `font-[400] text-[16px] text-[#000000] ${
@@ -95,11 +96,11 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
     "completed_Images"
   ];
 
-  //if (!loading){
-  // if (currentUser.role === "user") {
-  //    baseNonEditable.push("assignedTo");
-  //  } 
-  //}
+  if (!loading && isAnnotators[currentUser.id]){
+   if (isAnnotators[currentUser.id] === "annotator") {
+      baseNonEditable.push("assignedTo");
+    } 
+  }
   const nonEditable = baseNonEditable.includes(name);
 
   const isOwner = 

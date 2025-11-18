@@ -42,7 +42,8 @@ import Toast from "./components/Toast";
 
 //Authentication
 import { AuthContext } from "../../components/AuthContext";
-
+import BoundingBoxTool, {getDrawRect} from "./Tools/BoundingBox/BoundingBoxTool";
+import BoundingBoxOverlay from "./Tools/BoundingBox/BoundingBoxOverlay";
 
 
 
@@ -88,6 +89,21 @@ const AnnotationPage = () => {
   const currentIndex = selectedImageId ? imageMetas.findIndex((img) => img.id === selectedImageId) + 1 : 0;
 
 
+  // bbox tool
+  const bbox = BoundingBoxTool(selectedCategory, selectedImageId);
+  const [viewportVersion, setViewportVersion] = useState(0);
+
+  useEffect(() => {
+    const handleResize = () => {
+      // elke resize ⇒ +1 ⇒ rerender
+      setViewportVersion((v) => v + 1);
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+
   // get selectedDataset
   useEffect (() => {
     try{
@@ -96,6 +112,14 @@ const AnnotationPage = () => {
     } catch (err) {
     console.error("Bad selectedDataset in localStorage:", err)}
   }, [])
+
+  // set seletecteImage
+  useEffect(() => {
+  if (!dataset || !selectedImageId) return;
+  const key = `selectedImage:${dataset.id}`;
+  localStorage.setItem(key, selectedImageId);
+}, [dataset, selectedImageId]);
+
 
   // fetch images once dataset is known -------------------
   const fetchImages = async () => {
@@ -213,12 +237,28 @@ const AnnotationPage = () => {
   }, [imageMetas, offset, authType, loading]); // urls kun je weglaten om extra reruns te voorkomen
 
 
-  // auto-select first image
+  // auto-select last viewed image (or first) per dataset
   useEffect(() => {
-    if (!selectedImageId && imageMetas.length > 0){
+    if (!dataset || imageMetas.length === 0) return;
+
+    const key = `selectedImage:${dataset.id}`;
+    const saved = localStorage.getItem(key);
+
+    // als er een opgeslagen imageId is, en die bestaat in deze dataset
+    if (saved && imageMetas.some((img) => img.id === saved)) {
+      // alleen als we nog niets geselecteerd hebben of iets anders
+      if (selectedImageId !== saved) {
+        setSelectedImageId(saved);
+      }
+      return;
+    }
+
+    // anders fallback naar de eerste image
+    if (!selectedImageId) {
       setSelectedImageId(imageMetas[0].id);
     }
-  }, [imageMetas, selectedImageId]);
+  }, [dataset, imageMetas]);
+
 
 
   // Next Image
@@ -275,8 +315,6 @@ const AnnotationPage = () => {
   }, [handleNextImage, handlePrevImage]);
 
 
-
-
   useEffect(() => { 
     if (!selectedImageId || !fileListRef.current) return;
 
@@ -293,8 +331,6 @@ const AnnotationPage = () => {
   }, [selectedImageId]);
 
 
-
- 
   const filteredImages = imageMetas.filter((img) =>
     img.fileName.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -310,10 +346,15 @@ const AnnotationPage = () => {
 
 
   const handleBackClick = () => navigate("/overview");
-  const handleUndo = () => console.log("Undo clicked");
-  const handleRedo = () => console.log("Redo clicked");
   const handleSelectTool = (toolId) =>
     setSelectedTool(toolId === selectedTool ? null : toolId);
+
+  useEffect(() => {
+    if(selectedTool !== "bounding") {
+      bbox.setMousePos(null); // remove crosshair
+    }
+  }, [selectedTool]);
+
 
   // position popup directly under the Category bar (anchored)
   const toggleCategoryPopup = () => {
@@ -322,6 +363,7 @@ const AnnotationPage = () => {
       return;
     }
     if (categoryButtonRef.current && rootRef.current) {
+      setReloadCategory("reload")
       const btnRect = categoryButtonRef.current.getBoundingClientRect();
       const rootRect = rootRef.current.getBoundingClientRect();
       setPopupPosition({
@@ -403,7 +445,39 @@ const AnnotationPage = () => {
     document.body.style.cursor = "move";
     document.body.style.userSelect = "none";
     };
- 
+
+    
+let imgRect = null;
+let contRect = null;
+
+let imgLeft = 0;
+let imgTop = 0;
+let imgWidth = 0;
+let imgHeight = 0;
+
+if (bbox.imageRef.current && bbox.containerRef.current) {
+  const imgEl = bbox.imageRef.current;
+  const drawRect = getDrawRect(imgEl);     // dezelfde logica als in je tool
+  imgRect = drawRect;
+
+  contRect = bbox.containerRef.current.getBoundingClientRect();
+
+  imgLeft = drawRect.left - contRect.left;
+  imgTop = drawRect.top - contRect.top;
+  imgWidth = drawRect.width;
+  imgHeight = drawRect.height;
+}
+
+let crossX = 0;
+let crossY = 0;
+
+if (bbox.mousePos && imgRect) {
+   // muis in image-ruimte (0..1) → px in container
+  crossX = imgLeft + bbox.mousePos.x * imgWidth;
+  crossY = imgTop  + bbox.mousePos.y * imgHeight;
+}
+
+
 
   return (
     <div
@@ -487,7 +561,10 @@ const AnnotationPage = () => {
             {/* Undo / Redo */}
             <div className="absolute right-[162px] flex items-center">
               <button
-                onClick={handleUndo}
+                onClick={() => {
+                    if (selectedTool === "bounding") bbox.undo();
+                }}
+
                 title="Undo"
                 className="h-[26px] w-[26px] flex items-center justify-center"
                 style={{ background: "none", border: "none", padding: 0 }}
@@ -510,7 +587,9 @@ const AnnotationPage = () => {
               />
 
               <button
-                onClick={handleRedo}
+                onClick={() => {
+                  if (selectedTool === "bounding") bbox.redo();
+                }}
                 title="Redo"
                 className="h-[26px] w-[26px] flex items-center justify-center"
                 style={{ background: "none", border: "none", padding: 0 }}
@@ -550,7 +629,8 @@ const AnnotationPage = () => {
                 style={{
                   aspectRatio: "4 / 3",
                   width: "100%",
-                  maxWidth: "calc(100% - 160px)",
+                  height: "100%",
+                  maxWidth: "calc(100% - 20px)",
                   maxHeight: "100%",
                   backgroundColor: "#FFFFFF",
                   overflow: "hidden",
@@ -560,9 +640,50 @@ const AnnotationPage = () => {
                   boxSizing: "border-box",
                   alignItems: "center",
                   justifyContent: "center",
+                  position: "relative",
+                  // cusor logic
+                  cursor:
+                    selectedTool === "bounding" ? "crosshair" : "default",
+                  }}
+                
+                ref={(el) => {
+                  bbox.containerRef.current = el;
+                  //poly.containerRef.current = el;
+                  //pencil.containerRef.current = el;
+                  //ellipse.containerRef.current = el;
                 }}
+
+                // events
+                onMouseDown={(e) => {
+                  // if (selectedTool === "pencil") { pencil.onCanvasMouseDown(e); return; }
+                  // if (selectedTool === "polygon") { poly.onCanvasClick(e); return; }
+                  // if (selectedTool === "ellipse") { ellipse.onCanvasMouseDown(e); return; }
+                  if (selectedTool === "bounding") { bbox.onCanvasMouseDown(e); return; }
+                }}
+
+                onMouseMove={(e) => {
+                  // if (selectedTool === "pencil") pencil.onCanvasMouseMove(e);
+                  // if (selectedTool === "polygon") poly.setMousePos(poly.norm(e));
+                  if (selectedTool === "bounding") bbox.onCanvasMouseMove(e);
+                  // if (selectedTool === "ellipse") ellipse.onCanvasMouseMove(e);
+                }}
+
+                onMouseUp={(e) => {
+                  // if (selectedTool === "pencil") pencil.onCanvasMouseUp();
+                  if (selectedTool === "bounding") bbox.onCanvasMouseUp(e);
+                  // if (selectedTool === "ellipse") ellipse.onCanvasMouseUp(e);
+                }}
+
               >
-                <img
+
+              {/* IMAGE */}
+              <img
+                ref={(el) => {
+                bbox.imageRef.current = el;
+                // poly.imageRef.current = el;
+                // pencil.imageRef.current = el;
+                // ellipse.imageRef.current = el;
+              }}
                   src={selectedUrl}
                   alt={selectedMeta?.fileName || "Microscope View"}
                   draggable="false"
@@ -571,8 +692,61 @@ const AnnotationPage = () => {
                     height: "100%",
                     objectFit: "contain",
                     display: "block",
+                    pointerEvents:"none",
                   }}
                 />
+              {/* === CROSSHAIR (CLIPPED TO IMAGE) === */}
+              {bbox.mousePos && !bbox.draft && (
+                <>
+                  {/* Vertical line */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: `${crossX}px`,
+                      top: `${imgTop}px`,
+                      height: `${imgHeight}px`,
+                      width: "0px",
+                      borderLeft: "1.5px dashed rgba(80,80,80,0.4)",
+                      pointerEvents: "none",
+                      zIndex: 50,
+                    }}
+                  />
+
+                  {/* Horizontal line */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: `${crossY}px`,
+                      left: `${imgLeft}px`,
+                      width: `${imgWidth}px`,
+                      height: "0px",
+                      borderTop: "1.5px dashed rgba(80,80,80,0.4)",
+                      pointerEvents: "none",
+                      zIndex: 50,
+                    }}
+                  />
+                </>
+              )}
+              {/* === BOUNDING BOX OVERLAY === */}
+              {/* {selectedTool === "bounding" && ( */}
+                <BoundingBoxOverlay
+                  boxes={bbox.boxes}
+                  draft={bbox.draft}
+                  selectedId={bbox.selectedId}
+                  setSelectedId={bbox.setSelectedId}
+                  onBoxMouseDown={bbox.onBoxMouseDown}
+                  onHandleMouseDown={bbox.onHandleMouseDown}
+                  resizingBoxId={null}
+                  // NIEUW: image-positie doorgeven
+                  imgLeft={imgLeft}
+                  imgTop={imgTop}
+                  imgWidth={imgWidth}
+                  imgHeight={imgHeight}
+                  viewportVersion={viewportVersion}
+                />
+
+              {/* )} */}
+
               </div>
             </div>
 
@@ -844,7 +1018,7 @@ const AnnotationPage = () => {
                     filteredImages.map((img) => (
                       <div
                         key={img.id}
-                        data-image={img.id}
+                        data-image-id={img.id}
                         onClick={() => setSelectedImageId(img.id)}
                         style={{
                           height: `${ROW_H}px`,
@@ -1022,6 +1196,7 @@ const AnnotationPage = () => {
                 />
               </div>
             </div>
+
           </div>
 
           {/* === Feedback Request Popup === */}
