@@ -47,7 +47,6 @@ export async function guestLogin() {
 
   localStorage.setItem("access_token", access_token)
   localStorage.setItem("auth_kind", "guest");
-
   return response.data
 }
 
@@ -55,4 +54,5 @@ export async function guestLogin() {
 export async function getGuestInfo() {
   const response = await api.get("/guest/me");
   return response.data
+  
 }

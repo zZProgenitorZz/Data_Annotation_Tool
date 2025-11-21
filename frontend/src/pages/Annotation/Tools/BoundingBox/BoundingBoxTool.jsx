@@ -1,4 +1,7 @@
 import { useRef, useState, useEffect } from "react";
+import { getImageAnnotation} from "../../../../services/annotationService";
+import { updateBboxImageAnnotations, updateBboxImageAnnotations_noboxes } from "../ToolsService";
+
 
 
 
@@ -68,6 +71,7 @@ function clientToNorm(e, containerRef, imageRef) {
 
 
 
+
 export default function BoundingBoxTool(selectedCategory, activeImageId) {
   const [boxes, setBoxes] = useState([]);
   const [draft, setDraft] = useState(null);
@@ -75,7 +79,6 @@ export default function BoundingBoxTool(selectedCategory, activeImageId) {
   const [mousePos, setMousePos] = useState(null); 
 
   const [isDragging, setIsDragging] = useState(false);
-
 
   const containerRef = useRef(null);
   const imageRef = useRef(null);
@@ -85,33 +88,95 @@ export default function BoundingBoxTool(selectedCategory, activeImageId) {
 
   const interaction = useRef(null);
 
-  const boxesStoreRef = useRef({});   // { [imageId]: Box[] }
+  
   const [lastImageId, setLastImageId] = useState(null);
 
 
+
   // Wisselen van image: sla huidige boxes op, laad boxes van nieuwe image
-  useEffect(() => {
-    if (!activeImageId) return;
-
-    // 1) Huidige boxes opslaan onder de vorige imageId
-    if (lastImageId) {
-      boxesStoreRef.current[lastImageId] = boxes;
-    }
-
-    // 2) Boxes voor de nieuwe image laden (of lege array)
-    const stored = boxesStoreRef.current[activeImageId] || [];
-    setBoxes(stored);
-
-    // 3) State resetten voor deze image
+ useEffect(() => {
+  if (!activeImageId) {
+    // als er geen image is, alles leeg
+    setBoxes([]);
     setDraft(null);
     setSelectedId(null);
     history.current = [];
     future.current = [];
-    interaction.current = null;
+    return;
+  }
 
-    // 4) Onthoud dat dit nu de "vorige" is voor de volgende wissel
-    setLastImageId(activeImageId);
-  }, [activeImageId]);
+  let cancelled = false;
+
+  (async () => {
+    // 1) vorige image saven naar backend
+    if (lastImageId) {
+      try {
+        const prevBoxes = boxes; // dit zijn de boxes van de image die we verlaten
+
+        if (prevBoxes && prevBoxes.length > 0) {
+          
+          await updateBboxImageAnnotations(lastImageId, prevBoxes, false);
+        } else {
+          await updateBboxImageAnnotations_noboxes(lastImageId, false);
+        }
+        
+      } catch (err) {
+        console.error("Failed to auto-save bbox for image:", lastImageId, err);
+        // eventueel hier geen throw doen, zodat je altijd door kan gaan
+      }
+    }
+
+    if (cancelled) return;
+
+    // 2) nieuwe image uit de DB halen
+    try {
+      const data = await getImageAnnotation(activeImageId);
+      if (cancelled) return;
+
+      let loadedBoxes = [];
+
+      if (data && Array.isArray(data.annotations)) {
+        loadedBoxes = data.annotations
+          .filter((ann) => ann.type === "bbox" && ann.geometry)
+          .map((ann) => ({
+            id: ann.id,
+            x: ann.geometry.x,
+            y: ann.geometry.y,
+            w: ann.geometry.width,
+            h: ann.geometry.height,
+            category: ann.label, // of ann.category, afhankelijk van je model
+          }));
+      }
+
+      setBoxes(loadedBoxes);
+
+      // 3) reset undo/redo + selectie voor de nieuwe image
+      setDraft(null);
+      setSelectedId(null);
+      interaction.current = null;
+      history.current = [];
+      future.current = [];
+
+      // 4) deze image wordt nu de "vorige" bij de volgende wissel
+      setLastImageId(activeImageId);
+    } catch (err) {
+      console.error("Failed to load image annotations:", err);
+      if (!cancelled) {
+        setBoxes([]);
+        setDraft(null);
+        setSelectedId(null);
+        history.current = [];
+        future.current = [];
+        interaction.current = null;
+        setLastImageId(activeImageId); // toch door, maar dan zonder boxen
+      }
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [activeImageId]);
 
 
 
@@ -120,6 +185,23 @@ export default function BoundingBoxTool(selectedCategory, activeImageId) {
       prev.map((b) => (b.id === id ? { ...b, ...updater(b) } : b))
     );
   };
+
+  const deleteSelectedBox = () => {
+    setBoxes((prev) => {
+      if (!selectedId) return prev;
+
+      // history opslaan vóór we verwijderen
+      saveHistory(prev);
+
+      const updated = prev.filter((b) => b.id !== selectedId);
+      return updated;
+    });
+
+    setSelectedId(null);
+  };
+
+
+
 
 
 
@@ -213,34 +295,44 @@ export default function BoundingBoxTool(selectedCategory, activeImageId) {
         tag === "textarea" ||
         e.target.isContentEditable;
 
+      // Als user in een input aan het typen is → niks doen
       if (isTyping) return;
-
-      if (!e.ctrlKey) return;
 
       const key = e.key.toLowerCase();
 
-      if (key === "z" && !e.shiftKey) {
-        e.preventDefault();
-        undo();
-        return;
+      // 1) Undo / Redo (met Ctrl)
+      if (e.ctrlKey) {
+        if (key === "z" && !e.shiftKey) {
+          e.preventDefault();
+          undo();
+          return;
+        }
+
+        if (key === "z" && e.shiftKey) {
+          e.preventDefault();
+          redo();
+          return;
+        }
+
+        if (key === "y") {
+          e.preventDefault();
+          redo();
+          return;
+        }
       }
 
-      if (key === "z" && e.shiftKey) {
+      // 2) Delete of Backspace → geselecteerde box verwijderen
+      if (key === "delete" || key === "backspace") {
+        if (!selectedId) return; // niks geselecteerd
         e.preventDefault();
-        redo();
-        return;
-      }
-
-      if (key === "y") {
-        e.preventDefault();
-        redo();
-        return;
+        deleteSelectedBox();
       }
     };
 
     window.addEventListener("keydown", handleKeys);
     return () => window.removeEventListener("keydown", handleKeys);
-  }, [undo, redo]);
+  }, [undo, redo, selectedId]);
+
 
   const onBoxMouseDown = (e, id) => {
     e.preventDefault();

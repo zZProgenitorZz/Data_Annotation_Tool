@@ -8,7 +8,9 @@ export async function createDataset(dataset) {
 
 // Get all datasets
 export async function getAllDatasets() {
+  
   const response = await api.get("/dataset/all-datasets");
+
   return response.data;
 }
 

@@ -22,7 +22,7 @@ def get_guest_user(guest_id : str | None = None):
         id=guest_id,
         username=f"Guest_{guest_id[-6:]}",
         email=f"{guest_id}@guest.local",
-        role="annotator",
+        role="user",
         disabled=False,
         is_guest=True  # Add this field to identify guest users
     )
@@ -268,6 +268,13 @@ class GuestSessionService:
                 session["images"][image_id] = metadata
                 inserted_images.append(metadata)
 
+                ann_data = ImageAnnotations(
+                    for_remark=False,
+                    imageId=str(image_id),
+                    annotations=[]
+                )
+                self.create_image_annotations(guest_id, image_id, ann_data)
+
             dataset = session["datasets"][dataset_id]
             dataset["total_Images"] = dataset.get("total_Images", 0) + len(inserted_images)
             dataset["updatedAt"] = datetime.now(timezone.utc)
@@ -303,7 +310,9 @@ class GuestSessionService:
         session = self._get_session(guest_id)
         deleted_count = 0
 
+
         for img_id in image_ids:
+            self.delete_image_annotations(guest_id, img_id)
             img = session["images"].get(img_id)
             if img and img.get("datasetId") == dataset_id:
                 del session["images"][img_id]
@@ -330,73 +339,51 @@ class GuestSessionService:
             "imageId": image_id
         }
         
-        logger.debug(f"Guest {guest_id} created annotations {annotation_id}")
+     
         return annotation_id
     
-    
-    def get_all_image_annotations(self, guest_id: str) -> List[dict]:
-        """Get all annotation documents for a guest."""
+    def get_image_annotation(self, guest_id: str, image_id: str) -> dict | None:
+        """
+        Get the annotation document for a given guest and image.
+        Returns the full annotation dict (inclusief id en imageId),
+        of None als er nog geen annotatie is.
+        """
         session = self._get_session(guest_id)
-        return list(session["annotations"].values())
-    
-    
-    def get_annotations_for_image(self, guest_id: str, image_id: str) -> List[dict]:
-        """Get all annotations for a specific image."""
-        session = self._get_session(guest_id)
-        
-        for ann in session["annotations"].values():
-            if ann.get("imageId") == image_id:
-                return ann.get("annotations", [])
-        
-        return []
-    
-    
-    
-    def add_annotation_to_image(self, guest_id: str, image_id: str, annotation: Annotation) -> bool:
-        """Add a single annotation to an image."""
-        session = self._get_session(guest_id)
-        
-        # Find existing annotations for this image
-        image_annotations = None
-        for ann_id, ann in session["annotations"].items():
-            if ann.get("imageId") == image_id:
-                image_annotations = ann
-                break
-        
-        if not image_annotations:
-            # Create new annotation document
-            ann_id = f"guest_ann_{len(session['annotations']) + 1}"
-            session["annotations"][ann_id] = {
-                "id": ann_id,
-                "imageId": image_id,
-                "annotations": [annotation.model_dump()]
-            }
-        else:
-            # Add to existing
-            if "annotations" not in image_annotations:
-                image_annotations["annotations"] = []
-            image_annotations["annotations"].append(annotation.model_dump())
-        
-        return True
-    
-    
+        annotations = session.get("annotations", {})
 
-    
-    def delete_single_annotation(self, guest_id: str, image_id: str, annotation_id: str) -> bool:
-        """Delete a single annotation from an image."""
+        # zoek de eerste annotatie voor deze imageId
+        for ann in annotations.values():
+            if ann.get("imageId") == image_id:
+                return ann
+
+        return None
+        
+    def update_image_annotation(
+        self,
+        guest_id: str,
+        image_id: str,
+        updated_annotations: ImageAnnotations
+    ) -> bool:
+        """
+        Update de annotaties voor een bepaalde image in een guest-sessie.
+        Returnt True als er iets is geüpdatet, anders False (als er nog niets bestond).
+        """
         session = self._get_session(guest_id)
-        
-        for ann in session["annotations"].values():
-            if ann.get("imageId") == image_id and "annotations" in ann:
-                original_count = len(ann["annotations"])
-                ann["annotations"] = [
-                    a for a in ann["annotations"]
-                    if a.get("id") != annotation_id
-                ]
-                return len(ann["annotations"]) < original_count
-        
+        annotations = session.get("annotations", {})
+
+        for ann_key, ann in annotations.items():
+            if ann.get("imageId") == image_id:
+                # id en imageId behouden, rest vervangen door nieuwe data
+                annotations[ann_key] = {
+                    **updated_annotations.model_dump(),
+                    "id": ann.get("id"),
+                    "imageId": image_id,
+                }
+                return True
+
+        # niets gevonden om te updaten
         return False
-    
+  
     
     def delete_image_annotations(self, guest_id: str, image_id: str) -> bool:
         """Delete all annotations for an image."""

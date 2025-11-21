@@ -14,7 +14,6 @@ export async function presignImages(datasetId, files) {
     })),
   };
   console.log(payload)
-  console.log(datasetId)
   const { data } = await api.post(`/image/${datasetId}/images/presign`, payload);
   
   return data;

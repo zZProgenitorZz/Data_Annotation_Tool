@@ -28,8 +28,10 @@ async def create_dataset(dataset: Dataset, current_user: UserDto = Depends(requi
 # Get all datasets
 @router.get("/all-datasets", response_model=List[DatasetDto])
 async def get_all_datasets(current_user: UserDto = Depends(require_roles(["admin","user"]))):
+    
     if is_guest_user(current_user):
         return list(guest_session_service._get_session(current_user.id)["datasets"].values())
+    
     return await dataset_service.get_all_datasets(current_user)
 
 

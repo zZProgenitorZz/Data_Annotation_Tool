@@ -52,7 +52,7 @@ class ImageAnnotations(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
     for_remark: bool | None = False
     imageId: Optional[str] = None
-    annotations: List[Annotation]
+    annotations: List[Annotation] = []
 
     model_config = ConfigDict(
         populate_by_name=True,

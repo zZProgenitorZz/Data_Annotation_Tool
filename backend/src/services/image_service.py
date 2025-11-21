@@ -8,6 +8,8 @@ from backend.core.aws import s3, S3_BUCKET, S3_PREFIX
 from backend.src.models.user import UserDto
 from datetime import datetime, timezone
 from backend.src.services.imageMetadata_service import MetadataService
+from backend.src.models.annotation2 import ImageAnnotations
+from backend.src.services.annotation_service2 import ImageAnnotationsService
 
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/tiff", "image/webp", "image/jpg"}
 
@@ -16,6 +18,7 @@ class ImageService:
     def __init__(self):
         self.image_repo = ImageMetadataRepo()
         self.metadata_service = MetadataService()
+        self.ann_service = ImageAnnotationsService()
 
  
     # ---------- presign upload ----------
@@ -55,8 +58,23 @@ class ImageService:
                 by_alias=True,
                 exclude_none=True,
                 exclude={"id"}
-
             ))
+            
+            ann_data = ImageAnnotations(
+                    for_remark=False,
+                    imageId=str(saved.id),
+                    annotations=[]
+            )
+
+            
+            if (ann_data):
+                await self.ann_service.create_image_annotations(
+                        saved.id,
+                        ann_data
+                )
+           
+
+            
             
             put_url = s3.generate_presigned_url(
                 ClientMethod="put_object",
@@ -175,7 +193,7 @@ class ImageService:
         url = s3.generate_presigned_url(
             ClientMethod="get_object",
             Params={"Bucket": S3_BUCKET, "Key": doc.s3Key},
-            ExpiresIn=60*2
+            ExpiresIn=60*30
         )
         return {"url": url, "contentType": doc.contentType}
     
@@ -196,8 +214,10 @@ class ImageService:
                 s3.delete_object(Bucket=S3_BUCKET, Key=metadata.s3Key)
             except Exception:
                 pass
-
+        
         deleted = await self.image_repo.delete_image_metadata(image_id)
+        if (deleted):
+            await self.ann_service.delete_image_annotations(image_id)
         return deleted
 
     # hard delete all soft-deleted images of a dataset

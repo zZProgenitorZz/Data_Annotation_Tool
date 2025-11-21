@@ -46,6 +46,7 @@ import BoundingBoxTool, {getDrawRect} from "./Tools/BoundingBox/BoundingBoxTool"
 import BoundingBoxOverlay from "./Tools/BoundingBox/BoundingBoxOverlay";
 
 
+import { updateBboxImageAnnotations_noboxes, updateBboxImageAnnotations } from "./Tools/ToolsService";
 
 
 
@@ -91,17 +92,49 @@ const AnnotationPage = () => {
 
   // bbox tool
   const bbox = BoundingBoxTool(selectedCategory, selectedImageId);
-  const [viewportVersion, setViewportVersion] = useState(0);
+  const [drawRect, setDrawRect] = useState(null);
+
+  const latestImageIdRef = useRef(selectedImageId)
+  const latestBoxesRef = useRef(bbox.boxes)
+
+  useEffect (() => {
+    latestImageIdRef.current = selectedImageId;
+  }, [selectedImageId])
 
   useEffect(() => {
-    const handleResize = () => {
-      // elke resize ⇒ +1 ⇒ rerender
-      setViewportVersion((v) => v + 1);
+    latestBoxesRef.current = bbox.boxes;
+  }, [bbox.boxes]) 
+
+  useEffect(() => {
+    return () => {
+      const lastImageId = latestImageIdRef.current;
+      const lastBoxes = latestBoxesRef.current;
+
+      if (!lastImageId) return;
+      if (lastBoxes && lastBoxes.length > 0){
+        updateBboxImageAnnotations(lastImageId, lastBoxes, false);
+      } else {
+        updateBboxImageAnnotations_noboxes(lastImageId, false)
+      }
+    };
+  }, []);
+
+
+  useEffect(() => {
+    if (!bbox.imageRef.current) return;
+
+    const recalc = () => {
+      setDrawRect(getDrawRect(bbox.imageRef.current));
     };
 
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+    // direct 1x berekenen (bij nieuwe activeImage)
+    recalc();
+
+    // opnieuw berekenen bij window-resize
+    window.addEventListener("resize", recalc);
+    return () => window.removeEventListener("resize", recalc);
+  }, [selectedImageId]); // of [activeImageId, bbox.imageRef]
+
 
 
   // get selectedDataset
@@ -259,6 +292,17 @@ const AnnotationPage = () => {
     }
   }, [dataset, imageMetas]);
 
+
+  const handleSaveAnnotation = () => {
+    if (!bbox.imageRef.current) return;
+    if (bbox.boxes) {
+      updateBboxImageAnnotations(selectedImageId, bbox.boxes, false);
+    }
+    else {updateBboxImageAnnotations_noboxes(selectedImageId, false);
+
+    }
+   
+  }
 
 
   // Next Image
@@ -686,6 +730,11 @@ if (bbox.mousePos && imgRect) {
               }}
                   src={selectedUrl}
                   alt={selectedMeta?.fileName || "Microscope View"}
+                  onLoad={() => {
+                    if (bbox.imageRef.current){
+                      setDrawRect(getDrawRect(bbox.imageRef.current))
+                    }
+                  }}
                   draggable="false"
                   style={{
                     width: "100%",
@@ -742,7 +791,7 @@ if (bbox.mousePos && imgRect) {
                   imgTop={imgTop}
                   imgWidth={imgWidth}
                   imgHeight={imgHeight}
-                  viewportVersion={viewportVersion}
+                  drawRect={drawRect}
                 />
 
               {/* )} */}
@@ -1120,7 +1169,7 @@ if (bbox.mousePos && imgRect) {
                   src={saveImageIcon}
                   alt="Save"
                   draggable="false"
-                  onClick={() => console.log("Save clicked")}
+                  onClick={() => handleSaveAnnotation()}
                   style={{
                     width: "36px",
                     height: "36px",
