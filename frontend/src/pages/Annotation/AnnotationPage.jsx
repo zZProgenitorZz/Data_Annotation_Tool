@@ -88,7 +88,8 @@ const AnnotationPage = () => {
   const selectedUrl = selectedImageId ? urls[selectedImageId] : null;
   const totalImages = imageMetas.length;
   const currentIndex = selectedImageId ? imageMetas.findIndex((img) => img.id === selectedImageId) + 1 : 0;
-
+  
+  const [reloadImages, setReloadImages] = useState(null)
 
   // bbox tool
   const bbox = BoundingBoxTool(selectedCategory, selectedImageId);
@@ -161,7 +162,8 @@ const AnnotationPage = () => {
     try {
       if (authType === "user"){
       const result = await listImages(dataset.id);
-      setImageMetas(result); 
+      const activeImages = (result || []).filter((img) => img.is_active === true);
+      setImageMetas(activeImages); 
       }
       if (authType === "guest") {
         const result = await getGuestImages(dataset.id);
@@ -195,7 +197,7 @@ const AnnotationPage = () => {
   useEffect(() => {
     if (!dataset) return;
     fetchImages();
-  }, [dataset, loading, authType]);
+  }, [dataset, loading, authType, reloadImages]);
 
   useEffect(() => {
     if (!dataset) return;
@@ -521,6 +523,21 @@ if (bbox.mousePos && imgRect) {
   crossY = imgTop  + bbox.mousePos.y * imgHeight;
 }
 
+const handleImageDeleted = (reason, deletedImageId) => {
+   
+    // 2. toast
+    setToast({
+      message: `Image deleted (${reason})`,
+      type: "success",
+    });
+
+    // 3. eventueel selectie leegmaken
+    if (selectedImageId === deletedImageId) {
+      setReloadImages(selectedImageId)
+      handleNextImage()
+
+    }
+  };
 
 
   return (
@@ -1283,14 +1300,9 @@ if (bbox.mousePos && imgRect) {
           {/* === Image Deletion Popup === */}
           {showImageDeletion && (
             <ImageDeletion
-              fileName={selectedMeta?.fileName}
+              imageId={selectedImageId}
               onClose={() => setShowImageDeletion(false)}
-              onSubmit={(reason) => {
-                setToast({
-                  message: `Image deleted (${reason})`,
-                  type: "success",
-                });
-              }}
+              onSubmit={handleImageDeleted}
             />
           )}
 

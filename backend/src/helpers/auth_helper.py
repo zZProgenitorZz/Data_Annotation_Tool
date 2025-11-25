@@ -33,7 +33,7 @@ async def get_user_or_guest(
         raise HTTPException(status_code=401, detail="Could not validate credentials")
     
     guest = await user_login.get_guest_user_from_token(credentials)
-    print(guest)
+    
     return guest
 
 

@@ -1,6 +1,11 @@
 import React, { useEffect, useState, useMemo } from "react";
 import selectionBox from "../../../assets/selectionbox.png";
 import selectedBox from "../../../assets/selectedbox.png";
+import { getReviewerIdsFromStorage } from "../../../utils/utils";
+import { createRemark } from "../../../services/remarkService";
+import { softDeleteImage } from "../../../services/ImageService";
+import { hardDeleteImage } from "../../../services/ImageService";
+
 
 // These are the default reasons shown in the pop-up.
 // The "Other" option is handled separately.
@@ -11,9 +16,10 @@ const REASONS = [
   "Not relevant to the project",
 ];
 
-const ImageDeletion = ({ fileName, onClose, onSubmit }) => {
+const ImageDeletion = ({ imageId, onClose, onSubmit }) => {
   // saves which reason was selected (string)
   const [selected, setSelected] = useState("");
+
 
   // saves the text user types when choosing "other"
   const [otherText, setOtherText] = useState("");
@@ -46,22 +52,48 @@ const ImageDeletion = ({ fileName, onClose, onSubmit }) => {
     []
   );
   // useMemo makes sure this object is created only once
-  // without it, a new obj would be created on every render,
-  // causing buttons to re-render unnecessarily.
-  // [] = no dependencies, so reuse the same obj forever
-  // |-> no state, no props, no variables from outside
-  // only eventhandler logic and DOM
-
-  // check if user selected "other" as reason
-  // if this is true, the user must type a custom reason
+  
   const isOther = selected === "other";
 
-  // determine whether delete/confirm button should be enabled:
-  // 1. selected must not be empty
-  // 2. if reason = "other": text must not be empty after trimming spaces
-  // 3. if the reason is not "other": always allow deletion (because a reason was selected)
+
   const canDelete =
     selected && (isOther ? otherText.trim().length > 0 : true);
+
+
+  const imageDelete = async (finalReason) => {
+      if (!selected && !otherText) return;
+
+      const stored = JSON.parse(localStorage.getItem("selectedDataset"));
+      if (!stored || !stored.id) {
+        console.error("No selectedDataset in localStorage");
+        return;
+      }
+
+      const remark = {
+        annotationId: "",
+        imageId: imageId,
+        datasetId: stored.id,
+        message: finalReason,
+        status: false,
+        reply: "",
+      };
+
+      // 1. remark opslaan
+      await createRemark(remark);
+
+      // 2. image soft-deleten (LET OP: datasetId + imageId)
+      await softDeleteImage(imageId);
+
+      // 3. parent vertellen wat er is gebeurd
+      if (onSubmit) {
+        onSubmit(finalReason, imageId);
+      }
+
+      // 4. popup sluiten
+      if (onClose) {
+        onClose();
+      }
+    };
 
   return (
     <div
@@ -210,14 +242,12 @@ const ImageDeletion = ({ fileName, onClose, onSubmit }) => {
           {/* Delete */}
           <button
             disabled={!canDelete}
-            onClick={() => {
+            onClick={ async () => {
               const finalReason =
                 selected === "other" ? otherText.trim() : selected;
+              await imageDelete(finalReason);
 
-              // send back the reason to AnnotationPage
-              onSubmit && onSubmit(finalReason);
-
-              onClose();
+              
             }}
             style={{
               padding: "10px 28px",

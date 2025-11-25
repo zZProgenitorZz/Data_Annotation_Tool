@@ -3,6 +3,7 @@ import { listImages, softDeleteImage, hardDeleteImage } from "../../services/Ima
 import UploadImages from "../../components/ImageUploader.jsx"
 import Header from "../../components/Header.jsx";
 import { AuthContext } from "../../components/AuthContext.jsx";
+import { getImageAnnotation } from "../../services/annotationService.js";
 
 
 
@@ -11,6 +12,7 @@ const ImageList = () => {
   const [imageList, setImageList] = useState([]);
   const [dataset, setDataset] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [annotations, setAnnotations] = useState(null)
   const {currentUser} = useContext(AuthContext)
 
 
@@ -30,11 +32,27 @@ const ImageList = () => {
     if (!dataset) return;
     try {
       const result = await listImages(dataset.id);
+      
       setImageList(result);
     } catch (err) {
       console.error("Failed to fetch images:", err);
     }
   };
+
+  const fetchAnnotations = async () => {
+    if (!imageList) return;
+    const allAnnotation = {}
+    for (const image of imageList) {
+      try {
+       
+        const result = await getImageAnnotation(image.id);
+        allAnnotation[image.id] = result
+      } catch (err) {
+        console.error("Failed to fetch annotation for image", image.id, err);
+      }
+    }
+    setAnnotations(allAnnotation)
+    }
 
   // haal eenmalig op als dataset bekend is
   useEffect(() => {
@@ -42,10 +60,14 @@ const ImageList = () => {
     fetchImages();
   }, [dataset]);
 
+  useEffect(() => {
+    if (!imageList) return;
+    fetchAnnotations();
+  }, [imageList]);
+
   const handleUploaded = async () => {
     await fetchImages();
   }
-
 
 
     
@@ -112,7 +134,9 @@ const ImageList = () => {
               .map((img, idx) => {
                 const key = img.id ?? img._id ?? idx;
                 const fileName = img.fileName ?? img.originalFilename ?? "(no name)";
-                const annotated = Boolean(false);
+                const annotation = annotations[img.id];
+                
+                const annotated = annotation?.annotations?.length > 0;
 
                 return (
                   <li

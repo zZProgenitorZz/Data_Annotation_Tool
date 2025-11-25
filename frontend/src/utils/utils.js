@@ -79,8 +79,29 @@ const parseAssignedTo = (assignedList) => {
   };
 
 
+  function getReviewerIdsFromStorage(datasetId) {
+  const key = `datasetAssigned:${datasetId}`;
+  const stored = localStorage.getItem(key);
+  if (!stored) return [];
 
-export {getChangedFields,  extractUserId, parseAssignedTo, extractUserRole, buildAssignedTo, parseAssignedFromDataset}
+  let map;
+  try {
+    map = JSON.parse(stored); // { userId: role }
+  } catch (e) {
+    console.error("Failed to parse assigned roles from localStorage", e);
+    return [];
+  }
+  // Pak alle userIds waar role === "reviewer"
+  const reviewerIds = Object.entries(map)
+    .filter(([userId, role]) => role === "reviewer")
+    .map(([userId]) => userId);
+
+  return reviewerIds;
+}
+
+
+
+export {getChangedFields, getReviewerIdsFromStorage,  extractUserId, parseAssignedTo, extractUserRole, buildAssignedTo, parseAssignedFromDataset}
 
 
 

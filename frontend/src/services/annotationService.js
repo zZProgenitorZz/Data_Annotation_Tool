@@ -28,6 +28,6 @@ export async function updateImageAnnotation(imageId, payload) {
 // // Delete a single annotation from an image
 // export async function deleteSingleAnnotation(imageId, annotationId) {
 //     const response = await api.delete(`/annotation/${imageId}/${annotationId}`);
-//     return response.data; // response_model=bool in backend
+//     return response.data; // response_model=bool in backend 
 // }
 

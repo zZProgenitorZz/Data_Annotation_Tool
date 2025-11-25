@@ -1,4 +1,4 @@
-import api from "./api";
+import api from "../api";
 
 // POST /remark/ 
 export async function createRemark(remark) {
@@ -7,8 +7,8 @@ export async function createRemark(remark) {
 }
 
 // GET /remark/all-remark  
-export async function getAllRemarks() {
-  const response = await api.get("/remark/all-remark");
+export async function getAllRemarks(datasetId) {
+  const response = await api.get("/remark/all-remark", {params: {dataset_id: datasetId},});
   return response.data;
 }
 
@@ -25,7 +25,7 @@ export async function updateRemark(remarkId, updatedRemark) {
 }
 
 // DELETE /remark/{remark_id}  
-export async function deleteRemark(remarkId) {
-  const response = await api.delete(`/remark/${remarkId}`);
+export async function deleteRemark(datasetId) {
+  const response = await api.delete(`/remark/${datasetId}`);
   return response.data;
 }

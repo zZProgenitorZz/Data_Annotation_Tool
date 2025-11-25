@@ -78,14 +78,40 @@ async def get_images(dataset_id: str, limit: Optional[int] = Query(None, ge=1, l
     
 
 # Soft delete images for user and hard delete for guest
-@router.delete("/{dataset_id}/soft", response_model=int)
-async def soft_delete_images(dataset_id: str, image_id: list[str] | None = None, current_user: UserDto = Depends(require_roles(["admin", "user"]))):
+@router.delete("/{dataset_id}/all/soft", response_model=int)
+async def soft_delete_images(
+    dataset_id: str,
+    current_user: UserDto = Depends(require_roles(["admin", "user"]))
+):
     try:
         if is_guest_user(current_user):
-            return guest_session_service.delete_images(current_user.id, dataset_id, image_id)
-        return await metadata_service.soft_delete_images(image_id, dataset_id, current_user)
+            # guest: ook alle images van dataset soft-deleten
+            return guest_session_service.delete_images(current_user.id, dataset_id)
+
+        # admin/user: alle images van dataset soft-delete
+        return await metadata_service.soft_delete_images(dataset_id, current_user)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    
+
+# Soft delete image for user and hard delete for guest
+@router.delete("/{image_id}/soft", response_model=bool)
+async def soft_delete_image(
+    image_id: str,
+    current_user: UserDto = Depends(require_roles(["admin", "user"]))
+):
+    try:
+    
+        if is_guest_user(current_user):
+            # guest: ook alle images van dataset soft-deleten
+            return guest_session_service.delete_image(current_user.id, image_id)
+
+        # admin/user: alle images van dataset soft-delete
+        return await metadata_service.soft_delete_image(image_id, current_user)
+    
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
 
 # Restore images
 @router.put("/{dataset_id}/restore", response_model=int)

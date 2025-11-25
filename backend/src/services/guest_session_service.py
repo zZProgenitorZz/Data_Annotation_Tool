@@ -305,20 +305,54 @@ class GuestSessionService:
         return data, img["contentType"]
     
     
-    def delete_images(self, guest_id: str, dataset_id: str, image_ids: list[str]) -> int:
-        """Hard delete multiple images from a specific dataset (guest only)."""
+    def delete_images(self, guest_id: str, dataset_id: str) -> int:
+        """
+        Hard delete all images from a specific dataset (guest only).
+        Gebruikt get_images_by_dataset om te bepalen welke images verwijderd worden.
+        """
         session = self._get_session(guest_id)
+        images_dict = session.get("images", {})
         deleted_count = 0
 
+        # haal alle images (values) voor deze dataset op
+        images_to_delete = self.get_images_by_dataset(guest_id, dataset_id)
 
-        for img_id in image_ids:
-            self.delete_image_annotations(guest_id, img_id)
-            img = session["images"].get(img_id)
-            if img and img.get("datasetId") == dataset_id:
-                del session["images"][img_id]
+        # loop over kopie van items, zodat we veilig kunnen deleten
+        for img_id, img in list(images_dict.items()):
+            if img in images_to_delete:
+                # eerst eventuele annotaties verwijderen
+                self.delete_image_annotations(guest_id, img_id)
+                # daarna image uit session weghalen
+                del images_dict[img_id]
                 deleted_count += 1
 
         return deleted_count
+    
+    def delete_image(self, guest_id: str, dataset_id: str, image_id: str) -> bool:
+        """
+        Hard delete één image uit een specifieke dataset (guest only).
+        Geeft True terug als er echt iets verwijderd is, anders False.
+        """
+        session = self._get_session(guest_id)
+        images_dict = session.get("images", {})
+
+        img = images_dict.get(image_id)
+        if not img:
+            # image bestaat niet in de sessie
+            return False
+
+        # extra beveiliging: check of image wel bij deze dataset hoort
+        if img.get("datasetId") != dataset_id:
+            return False
+
+        # eerst annotaties van deze image weghalen
+        self.delete_image_annotations(guest_id, image_id)
+
+        # daarna de image zelf verwijderen
+        del images_dict[image_id]
+
+        return True
+
 
 
 
