@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
+import { createRemark } from "../../../services/remarkService";
 
-const FeedbackRequest = ({ fileName, onClose, onSubmit }) => {
+const FeedbackRequest = ({ annotationId, imageId, fileName, onClose, onSubmit }) => {
   const [remarks, setRemarks] = useState("");
 
   useEffect(() => {
@@ -29,6 +30,42 @@ const FeedbackRequest = ({ fileName, onClose, onSubmit }) => {
   };
 
   const isDisabled = remarks.trim().length === 0;
+
+
+  const imageFeedback = async (remarks) => {
+        if (isDisabled) return;
+  
+        const stored = JSON.parse(localStorage.getItem("selectedDataset"));
+        if (!stored || !stored.id) {
+          console.error("No selectedDataset in localStorage");
+          return;
+        }
+  
+        const remark = {
+          annotationId: annotationId,
+          imageId: imageId,
+          datasetId: stored.id,
+          message: remarks,
+          status: false,
+          reply: "",
+        };
+  
+        // 1. remark opslaan
+        await createRemark(remark);
+  
+        
+  
+        // 3. parent vertellen wat er is gebeurd
+        if (onSubmit) {
+          onSubmit();
+        }
+  
+        // 4. popup sluiten
+        if (onClose) {
+          onClose();
+        }
+      };
+  
 
   return (
     <div
@@ -180,10 +217,8 @@ const FeedbackRequest = ({ fileName, onClose, onSubmit }) => {
         >
           <button
             disabled={isDisabled}
-            onClick={() => {
-              if (isDisabled) return;
-              if (onSubmit) onSubmit(remarks);
-              onClose();
+            onClick={async () => {
+              await imageFeedback(remarks);
             }}
             style={{
               padding: "12px 60px",

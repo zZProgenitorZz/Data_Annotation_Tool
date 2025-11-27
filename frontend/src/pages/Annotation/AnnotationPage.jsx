@@ -493,38 +493,38 @@ const AnnotationPage = () => {
     };
 
     
-let imgRect = null;
-let contRect = null;
+  let imgRect = null;
+  let contRect = null;
 
-let imgLeft = 0;
-let imgTop = 0;
-let imgWidth = 0;
-let imgHeight = 0;
+  let imgLeft = 0;
+  let imgTop = 0;
+  let imgWidth = 0;
+  let imgHeight = 0;
 
-if (bbox.imageRef.current && bbox.containerRef.current) {
-  const imgEl = bbox.imageRef.current;
-  const drawRect = getDrawRect(imgEl);     // dezelfde logica als in je tool
-  imgRect = drawRect;
+  if (bbox.imageRef.current && bbox.containerRef.current) {
+    const imgEl = bbox.imageRef.current;
+    const drawRect = getDrawRect(imgEl);     // dezelfde logica als in je tool
+    imgRect = drawRect;
 
-  contRect = bbox.containerRef.current.getBoundingClientRect();
+    contRect = bbox.containerRef.current.getBoundingClientRect();
 
-  imgLeft = drawRect.left - contRect.left;
-  imgTop = drawRect.top - contRect.top;
-  imgWidth = drawRect.width;
-  imgHeight = drawRect.height;
-}
+    imgLeft = drawRect.left - contRect.left;
+    imgTop = drawRect.top - contRect.top;
+    imgWidth = drawRect.width;
+    imgHeight = drawRect.height;
+  }
 
-let crossX = 0;
-let crossY = 0;
+  let crossX = 0;
+  let crossY = 0;
 
-if (bbox.mousePos && imgRect) {
-   // muis in image-ruimte (0..1) → px in container
-  crossX = imgLeft + bbox.mousePos.x * imgWidth;
-  crossY = imgTop  + bbox.mousePos.y * imgHeight;
-}
+  if (bbox.mousePos && imgRect) {
+    // muis in image-ruimte (0..1) → px in container
+    crossX = imgLeft + bbox.mousePos.x * imgWidth;
+    crossY = imgTop  + bbox.mousePos.y * imgHeight;
+  }
 
-const handleImageDeleted = (reason, deletedImageId) => {
-   
+  const handleImageDeleted = (reason, deletedImageId) => {
+    
     // 2. toast
     setToast({
       message: `Image deleted (${reason})`,
@@ -537,7 +537,11 @@ const handleImageDeleted = (reason, deletedImageId) => {
       handleNextImage()
 
     }
-  };
+    };
+
+  
+
+
 
 
   return (
@@ -1138,6 +1142,7 @@ const handleImageDeleted = (reason, deletedImageId) => {
               />
 
               {/* Feedback Request Button (inside tools panel) */}
+              {(authType === "user") && 
               <button
                 onClick={() => setShowFeedbackRequest(true)}
                 style={{
@@ -1168,6 +1173,7 @@ const handleImageDeleted = (reason, deletedImageId) => {
                   draggable="false"
                 />
               </button>
+              }
 
               {/* Bottom Action Buttons (Save, Prev, Next, Delete) */}
               <div
@@ -1268,9 +1274,11 @@ const handleImageDeleted = (reason, deletedImageId) => {
           {/* === Feedback Request Popup === */}
           {showFeedbackRequest && (
             <FeedbackRequest
+              annotationId={bbox.selectedId}
+              imageId={selectedImageId}
               fileName={selectedMeta?.fileName || "No file selected"}
               onClose={() => setShowFeedbackRequest(false)}
-              onSubmit={(remarks) => {
+              onSubmit={() => {
                 const success = true;
                   
 
