@@ -17,16 +17,43 @@ export async function updateBboxImageAnnotations(imageId, boxes, forRemark = fal
     },
   }));
 
+
+  const payload = {
+    for_remark: forRemark,
+    imageId: imageId,
+    annotations: annotations,
+  };
+  console.log(payload)
+
+  return updateImageAnnotation(imageId, payload)
+}
+
+export async function updatePolygonImageAnnotations(
+  imageId,
+  polygons,
+  forRemark = false
+) {
+  const annotations = polygons.map((polygon) => ({
+    id: polygon.id,
+    label: polygon.category,
+    type: "polygon",
+    geometry: {
+      // lijst met punten in genormaliseerde coords (0..1)
+      points: polygon.points.map((pt) => [pt.x, pt.y]),
+    },
+  }));
+
   const payload = {
     for_remark: forRemark,
     imageId: imageId,
     annotations: annotations,
   };
 
-  return updateImageAnnotation(imageId, payload)
+  return updateImageAnnotation(imageId, payload);
 }
 
-export async function updateBboxImageAnnotations_noboxes(imageId, forRemark = false) {
+
+export async function updateImageAnnotations_empty(imageId, forRemark = false) {
 
 
   const payload = {
@@ -36,4 +63,37 @@ export async function updateBboxImageAnnotations_noboxes(imageId, forRemark = fa
   };
 
   return updateImageAnnotation(imageId, payload)
+}
+
+// Pakt ALLE annotaties (bbox + polygon) samen
+export async function updateAllImageAnnotations(imageId, boxes, polygons, forRemark = false) {
+  const bboxAnnotations = (boxes || []).map((box) => ({
+    id: box.id,
+    label: box.category,
+    type: "bbox",
+    geometry: {
+      x: box.x,
+      y: box.y,
+      width: box.w,
+      height: box.h,
+    },
+  }));
+
+  const polygonAnnotations = (polygons || []).map((polygon) => ({
+    id: polygon.id,
+    label: polygon.category,
+    type: "polygon",
+    geometry: {
+      // backend verwacht List[List[float]] → [[x,y], ...]
+      points: polygon.points.map((pt) => [pt.x, pt.y]),
+    },
+  }));
+
+  const payload = {
+    for_remark: forRemark,
+    imageId,
+    annotations: [...bboxAnnotations, ...polygonAnnotations],
+  };
+
+  return updateImageAnnotation(imageId, payload);
 }

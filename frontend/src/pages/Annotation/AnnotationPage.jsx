@@ -19,6 +19,7 @@ import ellipseTool from "../../assets/ellipse-tool.png";
 import magicWandTool from "../../assets/magic-wand-tool.png";
 import selectedBg from "../../assets/selected.png";
 
+
 // Category icons
 import selectCategoryIcon from "../../assets/select-category.png";
 import addNewCategoryIcon from "../../assets/add-new-category.png";
@@ -42,11 +43,20 @@ import Toast from "./components/Toast";
 
 //Authentication
 import { AuthContext } from "../../components/AuthContext";
-import BoundingBoxTool, {getDrawRect} from "./Tools/BoundingBox/BoundingBoxTool";
+
+// Tools
 import BoundingBoxOverlay from "./Tools/BoundingBox/BoundingBoxOverlay";
+import { useBoundingBoxTool } from "./Tools/BoundingBox/BoundingBoxTool";
 
 
-import { updateBboxImageAnnotations_noboxes, updateBboxImageAnnotations } from "./Tools/ToolsService";
+import { usePolygonTool } from "./Tools/Polygon/PolygonTool";
+import PolygonOverlay from "./Tools/Polygon/PolygonOverlay";
+
+
+
+import { getImageDrawRect } from "../../utils/annotationGeometry";
+
+import { updateImageAnnotations_empty, updateAllImageAnnotations } from "./Tools/ToolsService";
 
 
 
@@ -91,50 +101,47 @@ const AnnotationPage = () => {
   
   const [reloadImages, setReloadImages] = useState(null)
 
+  //geometry of the image in the container
+  const [imageRect, setImageRect] = useState(null)
+ 
   // bbox tool
-  const bbox = BoundingBoxTool(selectedCategory, selectedImageId);
-  const [drawRect, setDrawRect] = useState(null);
+  const bbox = useBoundingBoxTool(selectedCategory, selectedImageId)
 
-  const latestImageIdRef = useRef(selectedImageId)
-  const latestBoxesRef = useRef(bbox.boxes)
+  // polygon tool
+  const poly = usePolygonTool(selectedCategory, selectedImageId)
+ 
+  
 
-  useEffect (() => {
-    latestImageIdRef.current = selectedImageId;
-  }, [selectedImageId])
+  // 1 functie om de rect te herberekenen
+  const recalcImageRect = useCallback(() => {
+    if (!bbox.imageRef.current || !bbox.containerRef.current) return;
 
+    const rect = getImageDrawRect(
+      bbox.imageRef.current,
+      bbox.containerRef.current
+    );
+    if (!rect) return;
+
+    setImageRect(rect);
+  }, [bbox]);
+
+  // Herbereken bij nieuwe image
   useEffect(() => {
-    latestBoxesRef.current = bbox.boxes;
-  }, [bbox.boxes]) 
+    recalcImageRect();
+  }, [selectedImageId, recalcImageRect]);
 
+  // Herbereken bij nieuwe image
   useEffect(() => {
-    return () => {
-      const lastImageId = latestImageIdRef.current;
-      const lastBoxes = latestBoxesRef.current;
+    recalcImageRect();
+  }, [selectedImageId, selectedUrl, recalcImageRect]);
 
-      if (!lastImageId) return;
-      if (lastBoxes && lastBoxes.length > 0){
-        updateBboxImageAnnotations(lastImageId, lastBoxes, false);
-      } else {
-        updateBboxImageAnnotations_noboxes(lastImageId, false)
-      }
-    };
-  }, []);
-
-
+  // Herbereken bij window-resize
   useEffect(() => {
-    if (!bbox.imageRef.current) return;
+    const handleResize = () => recalcImageRect();
 
-    const recalc = () => {
-      setDrawRect(getDrawRect(bbox.imageRef.current));
-    };
-
-    // direct 1x berekenen (bij nieuwe activeImage)
-    recalc();
-
-    // opnieuw berekenen bij window-resize
-    window.addEventListener("resize", recalc);
-    return () => window.removeEventListener("resize", recalc);
-  }, [selectedImageId]); // of [activeImageId, bbox.imageRef]
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [recalcImageRect]);
 
 
 
@@ -153,6 +160,42 @@ const AnnotationPage = () => {
   const key = `selectedImage:${dataset.id}`;
   localStorage.setItem(key, selectedImageId);
 }, [dataset, selectedImageId]);
+
+  // keydown effect
+  useEffect(() => {
+    const onKey = (e) => {
+      const tag = e.target.tagName.toLowerCase();
+      const isTyping =
+        tag === "input" || tag === "textarea" || e.target.isContentEditable;
+      if (isTyping) return;
+
+      const key = e.key.toLowerCase();
+
+      const activeTool =
+        selectedTool === "polygon"
+          ? poly
+          : bbox; // default to bbox
+
+      if (e.ctrlKey && key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        activeTool.undo();
+        return;
+      }
+      if (e.ctrlKey && ((key === "z" && e.shiftKey) || key === "y")) {
+        e.preventDefault();
+        activeTool.redo();
+        return;
+      }
+      if (key === "delete" || key === "backspace") {
+        e.preventDefault();
+        activeTool.deleteSelected?.();
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedTool, bbox, poly]);
 
 
   // fetch images once dataset is known -------------------
@@ -295,16 +338,28 @@ const AnnotationPage = () => {
   }, [dataset, imageMetas]);
 
 
-  const handleSaveAnnotation = () => {
-    if (!bbox.imageRef.current) return;
-    if (bbox.boxes) {
-      updateBboxImageAnnotations(selectedImageId, bbox.boxes, false);
-    }
-    else {updateBboxImageAnnotations_noboxes(selectedImageId, false);
+  const handleSaveAnnotation = async () => {
+    if (!selectedImageId) return;
 
+    const hasBbox = bbox.boxes && bbox.boxes.length > 0;
+    const hasPoly = poly.polygons && poly.polygons.length > 0;
+
+    // Geen enkele annotatie? Dan leeg wegschrijven.
+    if (!hasBbox && !hasPoly) {
+      await updateImageAnnotations_empty(selectedImageId, false);
+      return;
     }
-   
-  }
+
+    // Alles in één keer saven
+    await updateAllImageAnnotations(
+      selectedImageId,
+      hasBbox ? bbox.boxes : [],
+      hasPoly ? poly.polygons : [],
+      false
+    );
+  };
+
+
 
 
   // Next Image
@@ -422,7 +477,7 @@ const AnnotationPage = () => {
 
   const handleAddCategory = async () => {
     const name = newCategory.trim();
-    if (!name && !dataset) return;
+    if (!name || !dataset) return;
     const form = {
       labelName: name,
       labelDescription: ""
@@ -493,31 +548,24 @@ const AnnotationPage = () => {
     };
 
     
-  let imgRect = null;
-  let contRect = null;
 
   let imgLeft = 0;
   let imgTop = 0;
   let imgWidth = 0;
   let imgHeight = 0;
 
-  if (bbox.imageRef.current && bbox.containerRef.current) {
-    const imgEl = bbox.imageRef.current;
-    const drawRect = getDrawRect(imgEl);     // dezelfde logica als in je tool
-    imgRect = drawRect;
 
-    contRect = bbox.containerRef.current.getBoundingClientRect();
-
-    imgLeft = drawRect.left - contRect.left;
-    imgTop = drawRect.top - contRect.top;
-    imgWidth = drawRect.width;
-    imgHeight = drawRect.height;
+  if (imageRect) {
+    imgLeft = imageRect.left;
+    imgTop = imageRect.top;
+    imgWidth = imageRect.width;
+    imgHeight = imageRect.height;
   }
 
   let crossX = 0;
   let crossY = 0;
 
-  if (bbox.mousePos && imgRect) {
+  if (bbox.mousePos && imageRect) {
     // muis in image-ruimte (0..1) → px in container
     crossX = imgLeft + bbox.mousePos.x * imgWidth;
     crossY = imgTop  + bbox.mousePos.y * imgHeight;
@@ -628,6 +676,7 @@ const AnnotationPage = () => {
               <button
                 onClick={() => {
                     if (selectedTool === "bounding") bbox.undo();
+                    if (selectedTool === "polygon") poly.undo();
                 }}
 
                 title="Undo"
@@ -654,6 +703,7 @@ const AnnotationPage = () => {
               <button
                 onClick={() => {
                   if (selectedTool === "bounding") bbox.redo();
+                  if (selectedTool === "polygon") poly.redo();
                 }}
                 title="Redo"
                 className="h-[26px] w-[26px] flex items-center justify-center"
@@ -708,29 +758,32 @@ const AnnotationPage = () => {
                   position: "relative",
                   // cusor logic
                   cursor:
-                    selectedTool === "bounding" ? "crosshair" : "default",
+                    selectedTool === "bounding" ? "crosshair" : selectedTool === "polygon" ? "crosshair" : "default",
                   }}
                 
                 ref={(el) => {
                   bbox.containerRef.current = el;
-                  //poly.containerRef.current = el;
+                  poly.containerRef.current = el;
                   //pencil.containerRef.current = el;
                   //ellipse.containerRef.current = el;
                 }}
 
                 // events
                 onMouseDown={(e) => {
-                  // if (selectedTool === "pencil") { pencil.onCanvasMouseDown(e); return; }
-                  // if (selectedTool === "polygon") { poly.onCanvasClick(e); return; }
-                  // if (selectedTool === "ellipse") { ellipse.onCanvasMouseDown(e); return; }
-                  if (selectedTool === "bounding") { bbox.onCanvasMouseDown(e); return; }
+                  if (selectedTool === "bounding") {
+                    bbox.onCanvasMouseDown(e);
+                  } else if (selectedTool === "polygon") {
+                    // polygon draws on click but mousedown is fine too
+                    poly.onCanvasClick(e);
+                  }
                 }}
 
                 onMouseMove={(e) => {
-                  // if (selectedTool === "pencil") pencil.onCanvasMouseMove(e);
-                  // if (selectedTool === "polygon") poly.setMousePos(poly.norm(e));
-                  if (selectedTool === "bounding") bbox.onCanvasMouseMove(e);
-                  // if (selectedTool === "ellipse") ellipse.onCanvasMouseMove(e);
+                  if (selectedTool === "bounding") {
+                    bbox.onCanvasMouseMove(e);
+                  } else if (selectedTool === "polygon") {
+                    
+                  }
                 }}
 
                 onMouseUp={(e) => {
@@ -745,17 +798,13 @@ const AnnotationPage = () => {
               <img
                 ref={(el) => {
                 bbox.imageRef.current = el;
-                // poly.imageRef.current = el;
+                poly.imageRef.current = el;
                 // pencil.imageRef.current = el;
                 // ellipse.imageRef.current = el;
               }}
                   src={selectedUrl}
                   alt={selectedMeta?.fileName || "Microscope View"}
-                  onLoad={() => {
-                    if (bbox.imageRef.current){
-                      setDrawRect(getDrawRect(bbox.imageRef.current))
-                    }
-                  }}
+                  onLoad={recalcImageRect}
                   draggable="false"
                   style={{
                     width: "100%",
@@ -766,7 +815,7 @@ const AnnotationPage = () => {
                   }}
                 />
               {/* === CROSSHAIR (CLIPPED TO IMAGE) === */}
-              {bbox.mousePos && !bbox.draft && (
+              {selectedTool === "bounding" && bbox.mousePos && !bbox.draft && (
                 <>
                   {/* Vertical line */}
                   <div
@@ -798,22 +847,36 @@ const AnnotationPage = () => {
                 </>
               )}
               {/* === BOUNDING BOX OVERLAY === */}
-              {/* {selectedTool === "bounding" && ( */}
+              
                 <BoundingBoxOverlay
                   boxes={bbox.boxes}
-                  draft={bbox.draft}
+                  draft={selectedTool === "bounding" ? bbox.draft : null}
                   selectedId={bbox.selectedId}
                   setSelectedId={bbox.setSelectedId}
-                  onBoxMouseDown={bbox.onBoxMouseDown}
+                  onBoxMouseDown= {bbox.onBoxMouseDown}
                   onHandleMouseDown={bbox.onHandleMouseDown}
-                  resizingBoxId={null}
-                  // NIEUW: image-positie doorgeven
                   imgLeft={imgLeft}
                   imgTop={imgTop}
                   imgWidth={imgWidth}
                   imgHeight={imgHeight}
-                  drawRect={drawRect}
                 />
+              
+
+              {/* POLYGON overlay */}
+              
+                <PolygonOverlay
+                  polygons={poly.polygons}
+                  draft={selectedTool === "polygon" ? poly.draft : []}
+                  selectedId={poly.selectedId}
+                  onVertexMouseDown={poly.onVertexMouseDown}
+                  onPolygonMouseDown={poly.onPolygonMouseDown}
+                  onSelect={poly.onPolygonSelect}
+                  imgLeft={imgLeft}
+                  imgTop={imgTop}
+                  imgWidth={imgWidth}
+                  imgHeight={imgHeight}
+                />
+              
 
               {/* )} */}
 

@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import selectionBox from "../../../assets/selectionbox.png";
 import selectedBox from "../../../assets/selectedbox.png";
-import { getReviewerIdsFromStorage } from "../../../utils/utils";
 import { createRemark } from "../../../services/remarkService";
 import { softDeleteImage } from "../../../services/ImageService";
 import { hardDeleteImage } from "../../../services/ImageService";
