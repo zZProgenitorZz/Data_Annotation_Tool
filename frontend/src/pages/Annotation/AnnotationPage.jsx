@@ -48,10 +48,11 @@ import { AuthContext } from "../../components/AuthContext";
 import BoundingBoxOverlay from "./Tools/BoundingBox/BoundingBoxOverlay";
 import { useBoundingBoxTool } from "./Tools/BoundingBox/BoundingBoxTool";
 
-
 import { usePolygonTool } from "./Tools/Polygon/PolygonTool";
 import PolygonOverlay from "./Tools/Polygon/PolygonOverlay";
 
+import { useEllipseTool } from "./Tools/Ellipse/EllipseTool";
+import EllipseOverlay from "./Tools/Ellipse/EllipseOverlay";
 
 
 import { getImageDrawRect } from "../../utils/annotationGeometry";
@@ -129,6 +130,12 @@ const AnnotationPage = () => {
     onResetHistory: resetGlobalHistory,
   });
 
+  // ellipse tool
+  const ellipse = useEllipseTool(selectedCategory, selectedImageId, {
+    onHistoryPush: () => registerHistoryEntry("ellipse"),
+    onResetHistory: resetGlobalHistory,
+  });
+
   const globalUndo = useCallback(() => {
     const stack = undoStackRef.current;
     if (stack.past.length === 0) return;
@@ -140,8 +147,10 @@ const AnnotationPage = () => {
       bbox.undo();
     } else if (toolKey === "polygon") {
       poly.undo();
+    } else if (toolKey === "ellipse") {
+      ellipse.undo();
     }
-  }, [bbox, poly]);
+  }, [bbox, poly, ellipse]);
 
   const globalRedo = useCallback(() => {
     const stack = undoStackRef.current;
@@ -154,8 +163,10 @@ const AnnotationPage = () => {
       bbox.redo();
     } else if (toolKey === "polygon") {
       poly.redo();
+    } else if (toolKey === "ellipse") {
+      ellipse.redo();
     }
-  }, [bbox, poly]);
+  }, [bbox, poly. ellipse]);
 
   //////////////////////////////
   // 1 functie om de rect te herberekenen
@@ -169,12 +180,12 @@ const AnnotationPage = () => {
     if (!rect) return;
 
     setImageRect(rect);
-  }, [bbox]);
+  }, []);
 
   // Herbereken bij nieuwe image
   useEffect(() => {
     recalcImageRect();
-  }, [selectedImageId, recalcImageRect]);
+  }, [selectedImageId]);
 
   // Herbereken bij window-resize
   useEffect(() => {
@@ -227,7 +238,9 @@ const AnnotationPage = () => {
         const activeTool =
           selectedTool === "polygon"
             ? poly
-            : bbox; // delete blijft tool-specifiek
+            : selectedTool === "bounding"
+            ? bbox
+            : ellipse;
         activeTool.deleteSelected?.();
         return;
       }
@@ -235,7 +248,7 @@ const AnnotationPage = () => {
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedTool, bbox, poly, globalUndo, globalRedo]);
+  }, [selectedTool, bbox, poly, ellipse, globalUndo, globalRedo]);
 
 
 
@@ -384,9 +397,10 @@ const AnnotationPage = () => {
 
     const hasBbox = bbox.boxes && bbox.boxes.length > 0;
     const hasPoly = poly.polygons && poly.polygons.length > 0;
+    const hasEllipse = ellipse.ellipses && ellipse.ellipses.length > 0; 
 
     // Geen enkele annotatie? Dan leeg wegschrijven.
-    if (!hasBbox && !hasPoly) {
+    if (!hasBbox && !hasPoly && !hasEllipse) {
       await updateImageAnnotations_empty(selectedImageId, false);
       return;
     }
@@ -396,6 +410,7 @@ const AnnotationPage = () => {
       selectedImageId,
       hasBbox ? bbox.boxes : [],
       hasPoly ? poly.polygons : [],
+      hasEllipse ? ellipse.ellipses : [],
       false
     );
   };
@@ -632,6 +647,7 @@ const AnnotationPage = () => {
   const handleBoxMouseDown = (e, id) => {
     // eerst alle polygon-selecties weg
     poly.setSelectedId?.(null);
+    ellipse.setSelectedId?.(null);
 
     // daarna de originele bbox-logica uitvoeren
     bbox.onBoxMouseDown(e, id);
@@ -640,6 +656,7 @@ const AnnotationPage = () => {
   const handleBoxHandleMouseDown = (e, id, corner) => {
     // ook bij resize: eerst polygon-deselect
     poly.setSelectedId?.(null);
+    ellipse.setSelectedId?.(null);
 
     // daarna de originele bbox-logica uitvoeren
     bbox.onHandleMouseDown(e, id, corner);
@@ -648,6 +665,7 @@ const AnnotationPage = () => {
   const handlePolygonMouseDown = (e, id) => {
     // eerst bbox-deselect
     bbox.setSelectedId?.(null);
+    ellipse.setSelectedId?.(null);
 
     // daarna de originele polygon-logica
     poly.onPolygonMouseDown(e, id);
@@ -656,6 +674,7 @@ const AnnotationPage = () => {
   const handleVertexMouseDown = (e, polyId, index) => {
     // bij vertex drag ook bbox-deselect
     bbox.setSelectedId?.(null);
+    ellipse.setSelectedId?.(null);
 
     poly.onVertexMouseDown(e, polyId, index);
   };
@@ -663,8 +682,28 @@ const AnnotationPage = () => {
   // als je nog een aparte "select" callback hebt
   const handlePolygonSelect = (id) => {
     bbox.setSelectedId?.(null);
+    ellipse.setSelectedId?.(null);
+
     poly.onPolygonSelect?.(id);
   };
+
+  const handleEllipseMouseDown = (e, id) => {
+    // eerst bbox-deselect
+    bbox.setSelectedId?.(null);
+    poly.setSelectedId?.(null);
+    // daarna de originele ellipse-logica
+    ellipse.onEllipseMouseDown(e, id);
+  };
+  
+  const handleEllipseHandleMouseDown = (e, id, handle) => {
+    // ook bij resize: eerst bbox- en polygon-deselect
+    bbox.setSelectedId?.(null);
+    poly.setSelectedId?.(null);
+    // daarna de originele ellipse-logica uitvoeren
+    ellipse.onHandleMouseDown(e, id, handle);
+  };
+
+
 
     
 
@@ -838,7 +877,7 @@ const AnnotationPage = () => {
                   bbox.containerRef.current = el;
                   poly.containerRef.current = el;
                   //pencil.containerRef.current = el;
-                  //ellipse.containerRef.current = el;
+                  ellipse.containerRef.current = el;
                 }}
 
                 // events
@@ -848,21 +887,23 @@ const AnnotationPage = () => {
                   } else if (selectedTool === "polygon") {
                     // polygon draws on click but mousedown is fine too
                     poly.onCanvasClick(e);
+                  } else if (selectedTool === "ellipse") {
+                    ellipse.onCanvasMouseDown(e);
                   }
                 }}
 
                 onMouseMove={(e) => {
                   if (selectedTool === "bounding") {
                     bbox.onCanvasMouseMove(e);
-                  } else if (selectedTool === "polygon") {
-                    
+                  } else if (selectedTool === "ellipse") {
+                    ellipse.onCanvasMouseMove(e);
                   }
                 }}
 
                 onMouseUp={(e) => {
                   // if (selectedTool === "pencil") pencil.onCanvasMouseUp();
                   if (selectedTool === "bounding") bbox.onCanvasMouseUp(e);
-                  // if (selectedTool === "ellipse") ellipse.onCanvasMouseUp(e);
+                  if (selectedTool === "ellipse") ellipse.onCanvasMouseUp(e);
                 }}
 
               >
@@ -873,7 +914,7 @@ const AnnotationPage = () => {
                 bbox.imageRef.current = el;
                 poly.imageRef.current = el;
                 // pencil.imageRef.current = el;
-                // ellipse.imageRef.current = el;
+                ellipse.imageRef.current = el;
               }}
                   src={selectedUrl}
                   alt={selectedMeta?.fileName || "Microscope View"}
@@ -944,6 +985,19 @@ const AnnotationPage = () => {
                   onVertexMouseDown={handleVertexMouseDown}
                   onPolygonMouseDown={handlePolygonMouseDown}
                   onSelect={handlePolygonSelect}
+                  imgLeft={imgLeft}
+                  imgTop={imgTop}
+                  imgWidth={imgWidth}
+                  imgHeight={imgHeight}
+                />
+
+                <EllipseOverlay
+                  ellipses={ellipse.ellipses}
+                  draft={selectedTool === "ellipse" ? ellipse.draft : null}
+                  selectedId={ellipse.selectedId}
+                  onEllipseMouseDown={handleEllipseMouseDown}
+                  onHandleMouseDown={handleEllipseHandleMouseDown}
+
                   imgLeft={imgLeft}
                   imgTop={imgTop}
                   imgWidth={imgWidth}
@@ -1410,7 +1464,12 @@ const AnnotationPage = () => {
           {/* === Feedback Request Popup === */}
           {showFeedbackRequest && (
             <FeedbackRequest
-              annotationId={bbox.selectedId}
+              annotationId={() => {
+                if (bbox.selectedId) return bbox.selectedId;
+                if (poly.selectedId) return poly.selectedId;
+                if (ellipse.selectedId) return ellipse.selectedId;
+                return null;
+              }}
               imageId={selectedImageId}
               fileName={selectedMeta?.fileName || "No file selected"}
               onClose={() => setShowFeedbackRequest(false)}

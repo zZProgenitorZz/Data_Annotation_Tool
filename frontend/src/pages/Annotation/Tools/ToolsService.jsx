@@ -66,7 +66,7 @@ export async function updateImageAnnotations_empty(imageId, forRemark = false) {
 }
 
 // Pakt ALLE annotaties (bbox + polygon) samen
-export async function updateAllImageAnnotations(imageId, boxes, polygons, forRemark = false) {
+export async function updateAllImageAnnotations(imageId, boxes, polygons, ellipses, forRemark = false) {
   const bboxAnnotations = (boxes || []).map((box) => ({
     id: box.id,
     label: box.category,
@@ -89,10 +89,22 @@ export async function updateAllImageAnnotations(imageId, boxes, polygons, forRem
     },
   }));
 
+  const ellipseAnnotations = (ellipses || []).map((el) => ({
+    id: el.id,
+    label: el.category,
+    type: "ellipse",
+    geometry: {
+      cx: el.x + el.w / 2,
+      cy: el.y + el.h / 2,
+      rx: el.w / 2,
+      ry: el.h / 2,
+    },
+  }));
+
   const payload = {
     for_remark: forRemark,
     imageId,
-    annotations: [...bboxAnnotations, ...polygonAnnotations],
+    annotations: [...bboxAnnotations, ...polygonAnnotations, ...ellipseAnnotations],
   };
 
   return updateImageAnnotation(imageId, payload);
