@@ -5,16 +5,20 @@ import { useUndoRedoHistory } from "../../../../utils/useUndoRedoHistory";
 import { useImageAnnotations } from "../../../../utils/useImageAnnotations";
 import { clamp01 } from "../../../../utils/annotationGeometry";
 
-export function usePolygonTool(selectedCategory, activeImageId) {
+export function usePolygonTool(selectedCategory, activeImageId, options = {}) {
+
+  const { onHistoryPush, onResetHistory } = options;
+
   const {
     containerRef,
     imageRef,
-    mousePos, // not strictly needed, but available
+    mousePos,
     setMousePos,
     toNorm,
     getImageDrawRect,
   } = useCanvasGeometry();
 
+  // ⬇ LET OP: selectedId niet meer in de history stoppen
   const {
     present,
     setPresent,
@@ -25,15 +29,24 @@ export function usePolygonTool(selectedCategory, activeImageId) {
   } = useUndoRedoHistory({
     polygons: [],
     draft: [],
-    selectedId: null,
   });
+
+
 
   const polygons = present.polygons;
   const draft = present.draft;
-  const selectedId = present.selectedId;
+
+  // ⬇ selectedId is nu eigen state
+  const [selectedId, setSelectedId] = useState(null);
 
   const movingVertex = useRef(null);
   const movingWhole = useRef(null);
+
+  const saveHistory = () => {
+    // sla alleen shapes + draft op voor undo/redo
+    pushSnapshot(present);
+    if (onHistoryPush) onHistoryPush();
+  };
 
   // Load/save polygons via shared hook
   useImageAnnotations({
@@ -42,7 +55,9 @@ export function usePolygonTool(selectedCategory, activeImageId) {
     shapes: polygons,
     setShapesFromApi: (data) => {
       if (!data || !Array.isArray(data.annotations)) {
-        reset({ polygons: [], draft: [], selectedId: null });
+        reset({ polygons: [], draft: [] });
+        setSelectedId(null);
+        if (onResetHistory) onResetHistory(); // globale undo/redo reset
         return;
       }
 
@@ -51,16 +66,16 @@ export function usePolygonTool(selectedCategory, activeImageId) {
         .map((ann) => ({
           id: ann.id,
           category: ann.label,
-          points: ann.geometry.points.map((([x, y]) => ({ x, y }))),
+          points: ann.geometry.points.map(([x, y]) => ({ x, y })),
         }));
 
-      reset({ polygons: loaded, draft: [], selectedId: null });
+      reset({ polygons: loaded, draft: [] });
+      setSelectedId(null);
+      if (onResetHistory) onResetHistory(); //  allse when loading
     },
   });
 
-  const saveHistory = () => {
-    pushSnapshot(present);
-  };
+ 
 
   const finishPolygon = () => {
     if (draft.length < 3) {
@@ -80,10 +95,11 @@ export function usePolygonTool(selectedCategory, activeImageId) {
 
     saveHistory();
     setPresent((cur) => ({
+      ...cur,
       polygons: [...cur.polygons, newPoly],
       draft: [],
-      selectedId: newPoly.id,
     }));
+    setSelectedId(newPoly.id);
   };
 
   const onCanvasClick = (e) => {
@@ -92,6 +108,7 @@ export function usePolygonTool(selectedCategory, activeImageId) {
 
     setMousePos(p);
 
+    // check of we dicht bij het eerste punt zijn → polygon sluiten
     if (draft.length >= 3) {
       const first = draft[0];
       const d = Math.hypot(first.x - p.x, first.y - p.y);
@@ -109,8 +126,9 @@ export function usePolygonTool(selectedCategory, activeImageId) {
   };
 
   const onPolygonSelect = (id) => {
-    saveHistory();
-    setPresent((cur) => ({ ...cur, selectedId: id }));
+    // selecteren hoort meestal niet in undo/redo,
+    // dus hier GEEN saveHistory meer
+    setSelectedId(id);
   };
 
   const onVertexMouseDown = (e, polyId, index) => {
@@ -119,6 +137,8 @@ export function usePolygonTool(selectedCategory, activeImageId) {
     if (!p) return;
 
     saveHistory();
+    setSelectedId(polyId);
+
     movingVertex.current = { polyId, index };
 
     window.addEventListener("mousemove", onMoveVertex);
@@ -161,8 +181,9 @@ export function usePolygonTool(selectedCategory, activeImageId) {
     const poly = polygons.find((pl) => pl.id === polyId);
     if (!poly) return;
 
+    // hier wél history voor undo van het slepen
     saveHistory();
-    setPresent((cur) => ({ ...cur, selectedId: polyId }));
+    setSelectedId(polyId);
 
     movingWhole.current = {
       id: polyId,
@@ -221,16 +242,18 @@ export function usePolygonTool(selectedCategory, activeImageId) {
 
   const deleteSelected = () => {
     if (!selectedId) return;
+
     saveHistory();
     setPresent((cur) => ({
       ...cur,
       polygons: cur.polygons.filter((p) => p.id !== selectedId),
-      selectedId: null,
     }));
+    setSelectedId(null);
   };
 
   const cancelDraft = () => {
     if (draft.length === 0) return;
+
     saveHistory();
     setPresent((cur) => ({ ...cur, draft: [] }));
   };
@@ -239,6 +262,7 @@ export function usePolygonTool(selectedCategory, activeImageId) {
     polygons,
     draft,
     selectedId,
+    setSelectedId,
 
     containerRef,
     imageRef,

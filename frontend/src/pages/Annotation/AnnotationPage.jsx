@@ -104,14 +104,60 @@ const AnnotationPage = () => {
   //geometry of the image in the container
   const [imageRect, setImageRect] = useState(null)
  
+ // Globale undo/redo stack (tool-onafhankelijk)
+  const undoStackRef = useRef({ past: [], future: [] });
+
+  const registerHistoryEntry = useCallback((toolKey) => {
+    undoStackRef.current.past.push(toolKey);
+    undoStackRef.current.future = [];
+  }, []);
+
+  const resetGlobalHistory = useCallback(() => {
+    undoStackRef.current.past = [];
+    undoStackRef.current.future = [];
+  }, []);
+
   // bbox tool
-  const bbox = useBoundingBoxTool(selectedCategory, selectedImageId)
+  const bbox = useBoundingBoxTool(selectedCategory, selectedImageId, {
+    onHistoryPush: () => registerHistoryEntry("bbox"),
+    onResetHistory: resetGlobalHistory,
+  });
 
   // polygon tool
-  const poly = usePolygonTool(selectedCategory, selectedImageId)
- 
-  
+  const poly = usePolygonTool(selectedCategory, selectedImageId, {
+    onHistoryPush: () => registerHistoryEntry("polygon"),
+    onResetHistory: resetGlobalHistory,
+  });
 
+  const globalUndo = useCallback(() => {
+    const stack = undoStackRef.current;
+    if (stack.past.length === 0) return;
+
+    const toolKey = stack.past.pop();
+    stack.future.push(toolKey);
+
+    if (toolKey === "bbox") {
+      bbox.undo();
+    } else if (toolKey === "polygon") {
+      poly.undo();
+    }
+  }, [bbox, poly]);
+
+  const globalRedo = useCallback(() => {
+    const stack = undoStackRef.current;
+    if (stack.future.length === 0) return;
+
+    const toolKey = stack.future.pop();
+    stack.past.push(toolKey);
+
+    if (toolKey === "bbox") {
+      bbox.redo();
+    } else if (toolKey === "polygon") {
+      poly.redo();
+    }
+  }, [bbox, poly]);
+
+  //////////////////////////////
   // 1 functie om de rect te herberekenen
   const recalcImageRect = useCallback(() => {
     if (!bbox.imageRef.current || !bbox.containerRef.current) return;
@@ -130,11 +176,6 @@ const AnnotationPage = () => {
     recalcImageRect();
   }, [selectedImageId, recalcImageRect]);
 
-  // Herbereken bij nieuwe image
-  useEffect(() => {
-    recalcImageRect();
-  }, [selectedImageId, selectedUrl, recalcImageRect]);
-
   // Herbereken bij window-resize
   useEffect(() => {
     const handleResize = () => recalcImageRect();
@@ -142,7 +183,7 @@ const AnnotationPage = () => {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, [recalcImageRect]);
-
+////////////////////////////////
 
 
   // get selectedDataset
@@ -154,7 +195,7 @@ const AnnotationPage = () => {
     console.error("Bad selectedDataset in localStorage:", err)}
   }, [])
 
-  // set seletecteImage
+  // set selectedImage
   useEffect(() => {
   if (!dataset || !selectedImageId) return;
   const key = `selectedImage:${dataset.id}`;
@@ -171,23 +212,22 @@ const AnnotationPage = () => {
 
       const key = e.key.toLowerCase();
 
-      const activeTool =
-        selectedTool === "polygon"
-          ? poly
-          : bbox; // default to bbox
-
       if (e.ctrlKey && key === "z" && !e.shiftKey) {
         e.preventDefault();
-        activeTool.undo();
+        globalUndo();
         return;
       }
       if (e.ctrlKey && ((key === "z" && e.shiftKey) || key === "y")) {
         e.preventDefault();
-        activeTool.redo();
+        globalRedo();
         return;
       }
       if (key === "delete" || key === "backspace") {
         e.preventDefault();
+        const activeTool =
+          selectedTool === "polygon"
+            ? poly
+            : bbox; // delete blijft tool-specifiek
         activeTool.deleteSelected?.();
         return;
       }
@@ -195,7 +235,8 @@ const AnnotationPage = () => {
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedTool, bbox, poly]);
+  }, [selectedTool, bbox, poly, globalUndo, globalRedo]);
+
 
 
   // fetch images once dataset is known -------------------
@@ -587,7 +628,45 @@ const AnnotationPage = () => {
     }
     };
 
-  
+    // Als je een bbox aanklikt → bbox selecteren + polygon deselecten
+  const handleBoxMouseDown = (e, id) => {
+    // eerst alle polygon-selecties weg
+    poly.setSelectedId?.(null);
+
+    // daarna de originele bbox-logica uitvoeren
+    bbox.onBoxMouseDown(e, id);
+  };
+
+  const handleBoxHandleMouseDown = (e, id, corner) => {
+    // ook bij resize: eerst polygon-deselect
+    poly.setSelectedId?.(null);
+
+    // daarna de originele bbox-logica uitvoeren
+    bbox.onHandleMouseDown(e, id, corner);
+  };
+
+  const handlePolygonMouseDown = (e, id) => {
+    // eerst bbox-deselect
+    bbox.setSelectedId?.(null);
+
+    // daarna de originele polygon-logica
+    poly.onPolygonMouseDown(e, id);
+  };
+
+  const handleVertexMouseDown = (e, polyId, index) => {
+    // bij vertex drag ook bbox-deselect
+    bbox.setSelectedId?.(null);
+
+    poly.onVertexMouseDown(e, polyId, index);
+  };
+
+  // als je nog een aparte "select" callback hebt
+  const handlePolygonSelect = (id) => {
+    bbox.setSelectedId?.(null);
+    poly.onPolygonSelect?.(id);
+  };
+
+    
 
 
 
@@ -674,10 +753,7 @@ const AnnotationPage = () => {
             {/* Undo / Redo */}
             <div className="absolute right-[162px] flex items-center">
               <button
-                onClick={() => {
-                    if (selectedTool === "bounding") bbox.undo();
-                    if (selectedTool === "polygon") poly.undo();
-                }}
+                onClick={globalUndo}
 
                 title="Undo"
                 className="h-[26px] w-[26px] flex items-center justify-center"
@@ -701,10 +777,7 @@ const AnnotationPage = () => {
               />
 
               <button
-                onClick={() => {
-                  if (selectedTool === "bounding") bbox.redo();
-                  if (selectedTool === "polygon") poly.redo();
-                }}
+                onClick={globalRedo}
                 title="Redo"
                 className="h-[26px] w-[26px] flex items-center justify-center"
                 style={{ background: "none", border: "none", padding: 0 }}
@@ -853,8 +926,8 @@ const AnnotationPage = () => {
                   draft={selectedTool === "bounding" ? bbox.draft : null}
                   selectedId={bbox.selectedId}
                   setSelectedId={bbox.setSelectedId}
-                  onBoxMouseDown= {bbox.onBoxMouseDown}
-                  onHandleMouseDown={bbox.onHandleMouseDown}
+                  onBoxMouseDown= {handleBoxMouseDown}
+                  onHandleMouseDown={handleBoxHandleMouseDown}
                   imgLeft={imgLeft}
                   imgTop={imgTop}
                   imgWidth={imgWidth}
@@ -868,9 +941,9 @@ const AnnotationPage = () => {
                   polygons={poly.polygons}
                   draft={selectedTool === "polygon" ? poly.draft : []}
                   selectedId={poly.selectedId}
-                  onVertexMouseDown={poly.onVertexMouseDown}
-                  onPolygonMouseDown={poly.onPolygonMouseDown}
-                  onSelect={poly.onPolygonSelect}
+                  onVertexMouseDown={handleVertexMouseDown}
+                  onPolygonMouseDown={handlePolygonMouseDown}
+                  onSelect={handlePolygonSelect}
                   imgLeft={imgLeft}
                   imgTop={imgTop}
                   imgWidth={imgWidth}

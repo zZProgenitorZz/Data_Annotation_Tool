@@ -8,7 +8,9 @@ import { clamp01 } from "../../../../utils/annotationGeometry";
 
 const MIN_PIXEL = 12;
 
-export function useBoundingBoxTool(selectedCategory, activeImageId) {
+export function useBoundingBoxTool(selectedCategory, activeImageId, options = {}) {
+
+  const { onHistoryPush, onResetHistory } = options;
   const {
     containerRef,
     imageRef,
@@ -31,6 +33,12 @@ export function useBoundingBoxTool(selectedCategory, activeImageId) {
     reset,
   } = useUndoRedoHistory([]);
 
+  const pushHistory = (snapshot) => {
+    pushSnapshot(snapshot);      // lokale bbox history
+    if (onHistoryPush) onHistoryPush(); // globale stack updaten
+  };
+
+
   // Load/save via shared hook
   useImageAnnotations({
     activeImageId,
@@ -40,6 +48,7 @@ export function useBoundingBoxTool(selectedCategory, activeImageId) {
       if (!data || !Array.isArray(data.annotations)) {
         reset([]);
         setSelectedId(null);
+        if (onResetHistory) onResetHistory(); // globale undo/redo reset
         return;
       }
 
@@ -56,12 +65,13 @@ export function useBoundingBoxTool(selectedCategory, activeImageId) {
 
       reset(loaded);
       setSelectedId(null);
+      if (onResetHistory) onResetHistory(); //  allse when loading
     },
   });
 
   const deleteSelected = () => {
     if (!selectedId) return;
-    pushSnapshot(boxes);
+    pushHistory(boxes);
     setBoxes((prev) => prev.filter((b) => b.id !== selectedId));
     setSelectedId(null);
   };
@@ -110,7 +120,7 @@ export function useBoundingBoxTool(selectedCategory, activeImageId) {
       category: selectedCategory,
     };
 
-    pushSnapshot(boxes);
+    pushHistory(boxes);
     setBoxes((prev) => [...prev, newBox]);
     setSelectedId(id);
     setDraft(null);
@@ -131,7 +141,7 @@ export function useBoundingBoxTool(selectedCategory, activeImageId) {
     const box = boxes.find((b) => b.id === id);
     if (!box) return;
 
-    pushSnapshot(boxes);
+    pushHistory(boxes);
     setSelectedId(id);
 
     interactionRef.current = {
@@ -155,7 +165,7 @@ export function useBoundingBoxTool(selectedCategory, activeImageId) {
     const box = boxes.find((b) => b.id === id);
     if (!box) return;
 
-    pushSnapshot(boxes);
+    pushHistory(boxes);
     setSelectedId(id);
 
     interactionRef.current = {
