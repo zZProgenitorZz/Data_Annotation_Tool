@@ -29,7 +29,7 @@ class FreehandGeometry(BaseModel):
 
 
 class MaskGeometry(BaseModel):
-    maskPath: str  # e.g. SVG path string
+    maskPath: List[List[float]]  # [[x, y], [x, y], ...] representing the mask outline
 
 
 # ---- Annotation model ----
@@ -50,8 +50,9 @@ class Annotation(BaseModel):
 # ---- Image model ----
 class ImageAnnotations(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
+    for_remark: bool | None = False
     imageId: Optional[str] = None
-    annotations: List[Annotation]
+    annotations: List[Annotation] = []
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -79,6 +80,7 @@ class AnnotationDto(BaseModel):
 # ---- Image model Dto----
 class ImageAnnotationsDto(BaseModel):
     id: Optional[str] = Field(default=None, alias="_id")
+    for_remark: bool | None = False
     imageId: Optional[str] = None
     annotations: List[AnnotationDto] = []
 

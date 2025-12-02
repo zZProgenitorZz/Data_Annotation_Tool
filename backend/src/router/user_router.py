@@ -58,7 +58,7 @@ async def create_user(user: User, current_user: UserDto = Depends(require_roles(
 
 # Update user
 @router.put("/{user_id}", response_model=bool)
-async def update_user(user_id: str, updated_user: UserUpdate, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def update_user(user_id: str, updated_user: UserUpdate, current_user: UserDto = Depends(require_roles(["admin","user"]))):
     try:
         return await user_service.update_user(user_id, updated_user, current_user)
     except Exception as e:

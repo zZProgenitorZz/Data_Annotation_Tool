@@ -7,6 +7,7 @@ from backend.src.services.log_service import LogService
 from backend.src.repositories.Image_metadata_repo import ImageMetadataRepo
 from datetime import datetime, timezone
 
+
 class DatasetService:
     def __init__(self):
         self.dataset_repo = DatasetRepo()
@@ -37,10 +38,12 @@ class DatasetService:
 
             assigned_to_usernames = []
             if dataset_data.assignedTo:
-                for user_id in dataset_data.assignedTo:
-                    user = await self.user_repo.get_user_by_id(str(user_id))
+                for user_id_role in (dataset_data.assignedTo or []):
+                    user_id = str(user_id_role).split(" - ", 1)[0].strip()
+                    user = await self.user_repo.get_user_by_id(user_id)
                     if user:
                         assigned_to_usernames.append(user.username)
+
             
 
             await self.log.log_action(
@@ -61,57 +64,23 @@ class DatasetService:
         if not dataset:
             raise NotFoundError(f"Dataset with id {dataset_id} not found")
         
-        #Fetch user info
-        created_by_user = await self.user_repo.get_user_by_id(str(dataset.createdBy))
-        created_by_username = created_by_user.username if created_by_user else "Unknown"
-
-
-        assigned_to_usernames = []
-        if dataset.assignedTo:
-            for user_id in dataset.assignedTo:
-                user = await self.user_repo.get_user_by_id(str(user_id))
-                if user:
-                    assigned_to_usernames.append(user.username)
-
-        # Build and return DTO
-        return to_dto(dataset, created_by_username, assigned_to_usernames)
+       
+        return to_dto(dataset)
 
     # Get all datasets    
-    async def get_all_datasets(self, current_user : UserDto | None = None) -> list[DatasetDto]:
+    
+    async def get_all_datasets(
+        self,
+        current_user: UserDto | None = None
+    ) -> list[DatasetDto]:
         datasets = await self.dataset_repo.get_all_datasets()
         if not datasets:
             return []
+
+        # Gewoon elk model → DTO
+        return [to_dto(dataset) for dataset in datasets]
+
         
-        # Stap 1: alle dataset IDs ophalen en alle user IDs verzamelen
-        all_user_ids = set()
-        for dataset in datasets:
-            all_user_ids.add(str(dataset.createdBy))
-            if dataset.assignedTo:
-                all_user_ids.update([str(uid) for uid in dataset.assignedTo])
-
-        # Stap 2: batch query voor alle users
-        users = await self.user_repo.get_users_by_ids(list(all_user_ids))
-        # users is bijvoorbeeld een dict: {user_id: user_obj}
-
-
-        # Stap 3: bouw DTO's
-        result = []
-        for dataset in datasets:
-            created_user = users.get(str(dataset.createdBy))
-            created_by_username = created_user.username if created_user else "Unknown"
-
-            assigned_to_usernames = []
-            if dataset.assignedTo:
-                for uid in dataset.assignedTo:
-                    user = users.get(str(uid))
-                    if user:
-                        assigned_to_usernames.append(user.username)
-
-            dataset_dto = to_dto(dataset, created_by_username, assigned_to_usernames)
-            result.append(dataset_dto)
-
-        return result
-
 
 
    # Update a dataset
@@ -271,18 +240,18 @@ class DatasetService:
 
     # Checks on status (not done)
     
-def to_dto (dataset, username, assigned_to) :
+def to_dto (dataset) :
 
     return DatasetDto(
                 id=str(dataset.id),
                 name=dataset.name,
                 description=dataset.description,
-                createdBy=username,
+                createdBy=dataset.createdBy,
                 status=dataset.status,
                 total_Images=dataset.total_Images,
                 completed_Images=dataset.completed_Images,
                 locked=dataset.locked,
-                assignedTo=assigned_to,
+                assignedTo=dataset.assignedTo,
                 createdAt=dataset.createdAt,
                 updatedAt=dataset.updatedAt,
                 is_active=dataset.is_active,

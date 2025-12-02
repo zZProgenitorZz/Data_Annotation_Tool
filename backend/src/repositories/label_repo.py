@@ -18,17 +18,7 @@ class LabelRepo:
             **label
         )
 
-    # Get all labels
-    async def get_all_labels(self) -> list[Label]:
-        labels_cursor = self.collection.find()
-        labels = []
-        if labels_cursor:
-            async for label in labels_cursor:
-                labels.append(Label(
-                    **label
-                ))
-            return labels
-        return None
+
 
     # Create a new label
     async def create_label(self, label: dict) -> str:
@@ -45,6 +35,23 @@ class LabelRepo:
 
         result = await self.collection.update_one({"_id": PyObjectId(label_id)}, {"$set": updated_label})
         return result.modified_count > 0
+    
+    # Delete all dataset labels
+    async def delete_dataset_labels(self, dataset_id: str) -> bool:
+        result = await self.collection.delete_many({"datasetId": dataset_id})
+        return result.deleted_count > 0
+
+    # Get all labels
+    async def get_all_labels(self, dataset_id: str) -> list[Label]:
+        labels_cursor = self.collection.find({"datasetId": dataset_id})
+        labels = []
+        if labels_cursor:
+            async for label in labels_cursor:
+                labels.append(Label(
+                    **label
+                ))
+            return labels
+        return None
 
 
 

@@ -18,22 +18,20 @@ class MetadataService:
   
 #-----------------------------------------------------------------------------------------------------------------------
 
-    async def get_images_by_dataset(self, dataset_id: str, current_User: UserDto | None = None) -> List[ImageMetadataDto]:
-        images = await self.image_repo.get_image_by_dataset_id(dataset_id)
+    async def get_images_by_dataset(self, dataset_id: str, current_user: UserDto | None, limit: int | None, offset: int) -> List[ImageMetadataDto]:
+        images = await self.image_repo.get_image_by_dataset_id(dataset_id, limit, offset)
         if not images:
             return []
 
         images_dto = [
-            self.to_dto(image)
-            
+            self.to_dto(image)   
             for image in images
         ]
-
         return images_dto
 
     
     # -------------------soft delete
-    async def soft_delete_image(self, image_id: str) -> bool:
+    async def soft_delete_image(self, image_id: str, current_user: UserDto | None = None) -> bool:
         soft_delete = ImageMetadataUpdate(
             is_active = False
         )
@@ -41,25 +39,26 @@ class MetadataService:
         return await self.image_repo.update_image_metadata(image_id, soft_metadata)
     
     # soft delete all images
-    async def soft_delete_images(self, image_ids: list[str] | None = None, dataset_id: str | None = None, current_user: UserDto | None = None) -> int:
+    async def soft_delete_images(
+        self,
+        dataset_id: str,
+        current_user: UserDto | None = None
+    ) -> int:
 
         if not dataset_id:
             raise ValueError("dataset_id is required")
 
         # haal alle images van de dataset
-        images_in_dataset = await self.image_repo.get_image_by_dataset_id(dataset_id)
+        images_in_dataset = await self.image_repo.get_image_by_dataset_id(
+            dataset_id,
+            limit=None,
+            offset=0
+        )
         if not images_in_dataset:
             raise NotFoundError(f"Images with dataset id: {dataset_id} not found")
-        
-        if image_ids is None:
-            # soft-delete alle actieve images in de dataset
-            images_to_delete = [image for image in images_in_dataset if image.is_active]
-        else:
-            # soft-delete alleen de opgegeven images die in de dataset zitten
-            images_to_delete = [
-                image for image in images_in_dataset
-                if str(image.id) in image_ids and image.is_active
-            ]
+
+        # soft-delete alle actieve images in de dataset
+        images_to_delete = [image for image in images_in_dataset if image.is_active]
 
         if not images_to_delete:
             return 0
@@ -91,7 +90,7 @@ class MetadataService:
             raise ValueError("dataset_id is required")
 
         # haal alle images van de dataset
-        images_in_dataset = await self.image_repo.get_image_by_dataset_id(dataset_id)
+        images_in_dataset = await self.image_repo.get_image_by_dataset_id(dataset_id, limit=None, offset=0)
         if not images_in_dataset:
             raise NotFoundError(f"Images with dataset id: {dataset_id} not found")
         

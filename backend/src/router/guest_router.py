@@ -4,6 +4,7 @@ from backend.src.services.user_service import UserLogin, ACCESS_TOKEN_EXPIRE_MIN
 from datetime import timedelta
 from backend.src.services.guest_session_service import get_guest_user
 
+
 router = APIRouter()
 
 user_login = UserLogin()

@@ -5,7 +5,7 @@ import selectedBox from "../../assets/selectedbox.png";
 import { getAllDatasets, updateDataset } from "../../services/datasetService";
 import DatasetWrapper from "./DatasetCard"
 import { getAllUsers } from "../../services/authService";
-import getChangedFields from "../../utils/utils";
+import {getChangedFields, extractUserId } from "../../utils/utils";
 import { uploadImagesToS3 } from "../../utils/uploadImagesToS3";
 import { createDataset } from "../../services/datasetService";
 import { soft_Delete_Dataset, hard_Delete_Dataset } from "../../utils/deleteDataset";
@@ -13,6 +13,7 @@ import { softDeleteDataset } from "../../services/datasetService";
 import { AuthContext } from "../../components/AuthContext";
 import { uploadGuestImages } from "../../services/ImageService";
 import Header from "../../components/Header";
+import { deleteDatasetLabel } from "../../services/labelService";
 
 
 const getAssignedUser = async () => {
@@ -157,8 +158,12 @@ const Overview = () => {
       for (const datasetId of selectedDatasets) {
         if (!loading && authType === "user") {
         await soft_Delete_Dataset(datasetId);
+               
+        await deleteDatasetLabel(datasetId);
+          
         await hard_Delete_Dataset(datasetId);
         }
+
         if (!loading && authType === "guest") {
           await softDeleteDataset(datasetId)
         }
@@ -184,7 +189,9 @@ const Overview = () => {
   const handleSaveDataset = async ({ dataset, files }) => {
     try {
       // 1) dataset aanmaken in backend
+      
       const created = await createDataset(dataset);
+      
       const datasetId = created;
      
 
@@ -206,6 +213,7 @@ const Overview = () => {
           await uploadGuestImages(datasetId, files);
         }
       }
+      
       // 3) Datasets opnieuw ophalen (i.p.v. window.location.reload)
       await fetchDatasets();
 
@@ -224,6 +232,7 @@ const Overview = () => {
       {/* Header */}
       <Header title="Datasets" currentUser={currentUser}/>
 
+      
       <div className="flex-1 overflow-auto px-[40px] pt-[40px] datasets-scroll">
         <div className="flex justify-center gap-[24px] items-start flex-wrap">
           {columns.map((col, colIndex) => (

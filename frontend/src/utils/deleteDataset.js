@@ -1,5 +1,6 @@
 import { softDeleteDataset, hardDeleteDataset } from "../services/datasetService";
 import { hardDeleteDatasetImages, softDeleteDatasetImages } from "../services/ImageService";
+import { deleteRemark } from "../services/remarkService";
 
 
 export async function soft_Delete_Dataset(datasetId) {
@@ -21,6 +22,11 @@ export async function soft_Delete_Dataset(datasetId) {
 export async function hard_Delete_Dataset(datasetId) {
   try {
     await hardDeleteDatasetImages(datasetId);
+    try {
+      await deleteRemark(datasetId);
+    } catch (err) {
+      console.warn("Geen remarks gevonden of verwijderen mislukt, ga gewoon verder:", err);
+    }
     const result = await hardDeleteDataset(datasetId);
     return result;
   } catch (err) {

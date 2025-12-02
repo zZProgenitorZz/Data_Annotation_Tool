@@ -16,7 +16,7 @@ dataset_service = DatasetService()
 
 # Create dataset
 @router.post("/create", response_model=str)
-async def create_dataset(dataset: Dataset, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def create_dataset(dataset: Dataset, current_user: UserDto = Depends(require_roles(["admin","user"]))):
     try:
         if is_guest_user(current_user):
             return guest_session_service.create_dataset(current_user.id, dataset)
@@ -27,15 +27,17 @@ async def create_dataset(dataset: Dataset, current_user: UserDto = Depends(requi
 
 # Get all datasets
 @router.get("/all-datasets", response_model=List[DatasetDto])
-async def get_all_datasets(current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def get_all_datasets(current_user: UserDto = Depends(require_roles(["admin","user"]))):
+    
     if is_guest_user(current_user):
         return list(guest_session_service._get_session(current_user.id)["datasets"].values())
+    
     return await dataset_service.get_all_datasets(current_user)
 
 
 # Get dataset by ID
 @router.get("/{dataset_id}", response_model=DatasetDto)
-async def get_dataset(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def get_dataset(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin","user"]))):
     try:
         if is_guest_user(current_user):
             dataset = guest_session_service.get_dataset(current_user.id, dataset_id)
@@ -45,11 +47,14 @@ async def get_dataset(dataset_id: str, current_user: UserDto = Depends(require_r
         return await dataset_service.get_dataset(dataset_id, current_user)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    
+
+
 
 
 # Update dataset
 @router.put("/update/{dataset_id}", response_model=bool)
-async def update_dataset(dataset_id: str, dataset_update: DatasetUpdate, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def update_dataset(dataset_id: str, dataset_update: DatasetUpdate, current_user: UserDto = Depends(require_roles(["admin","user"]))):
     try:
         if is_guest_user(current_user):
             success = guest_session_service.update_dataset(current_user.id, dataset_id, dataset_update)
@@ -64,7 +69,7 @@ async def update_dataset(dataset_id: str, dataset_update: DatasetUpdate, current
 
 # Soft delete dataset for user and hard delete for guest
 @router.delete("/soft-d/{dataset_id}", response_model=bool)
-async def soft_delete_dataset(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer", "annotator"]))):
+async def soft_delete_dataset(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin", "user"]))):
     try:
         if is_guest_user(current_user):
             success = guest_session_service.delete_dataset(current_user.id, dataset_id)
@@ -78,7 +83,7 @@ async def soft_delete_dataset(dataset_id: str, current_user: UserDto = Depends(r
 
 # Restore dataset
 @router.post("/restore/{dataset_id}", response_model=bool)
-async def restore_dataset(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer"]))):
+async def restore_dataset(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin", "user"]))):
     try:
      
         return await dataset_service.restore_dataset(dataset_id, current_user)
@@ -88,7 +93,7 @@ async def restore_dataset(dataset_id: str, current_user: UserDto = Depends(requi
 
 # Hard delete dataset
 @router.delete("/hard-d/{dataset_id}", response_model=bool)
-async def hard_delete_dataset(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin", "reviewer"]))):
+async def hard_delete_dataset(dataset_id: str, current_user: UserDto = Depends(require_roles(["admin", "user"]))):
     try:
         
         return await dataset_service.hard_delete_dataset(dataset_id, current_user)

@@ -111,6 +111,14 @@ class UserLogin:
     #AUTHORIZE: User route
     async def get_current_active_user(self, token: str = Depends(oauth2_scheme)):
         current_user = await self.get_current_user(token)  # oauth2_scheme wordt automatisch gebruikt
+
+        if getattr(current_user, "is_guest", False):
+            # dit is géén normale user → laat get_user_or_guest de guest-logica pakken
+            raise HTTPException(
+                status_code=401,
+                detail="Guest token is not a normal user"
+            )
+
         if current_user.disabled:
             raise HTTPException(status_code=400, detail="Inactive user")
         return current_user

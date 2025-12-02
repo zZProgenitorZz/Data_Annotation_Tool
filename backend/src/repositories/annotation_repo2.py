@@ -13,21 +13,29 @@ class ImageAnnotationsRepo:
         return str(result.inserted_id)
 
    
-    # Get only annotations of a image by imageId
-    async def get_annotations_for_image(self, image_id: str) -> List[Annotation]:
-        doc = await self.collection.find_one({"imageId": str(image_id)})
-        if doc:
-            return [Annotation(**a) for a in doc.get("annotations", [])]
-        return []
+    # Get image annotation
+    async def get_image_annotation(self, image_id: str) -> ImageAnnotations:
+        doc = await self.collection.find_one({"imageId" : str(image_id)})
+        if not doc:
+            return None
+        return ImageAnnotations(
+            **doc
+        )
 
+    # update image annotation
+    async def update_image_annotation(self, image_id: str, updated_data: dict) -> bool:
+        
+        result = await self.collection.update_one({"imageId": str(image_id)}, {"$set": updated_data})
 
-    # Get all image annotations
-    async def get_all_image_annotations(self) -> list[ImageAnnotations]:
-        cursor = self.collection.find()
-        results = []
-        async for doc in cursor:
-            results.append(ImageAnnotations(**doc))
-        return results
+        return result.modified_count >= 0 and result.acknowledged
+
+    # # Get all image annotations
+    # async def get_all_image_annotations(self) -> list[ImageAnnotations]:
+    #     cursor = self.collection.find()
+    #     results = []
+    #     async for doc in cursor:
+    #         results.append(ImageAnnotations(**doc))
+    #     return results
 
     # Delete image annotations by image/document id
     async def delete_image_annotations(self, image_id: str) -> bool:
@@ -36,18 +44,18 @@ class ImageAnnotationsRepo:
 
 
     
-    # delete a sigle annotation from  image_annotaions
-    async def delete_single_annotation(self, image_id: str, annotation_id: str) -> bool:
-        result = await self.collection.update_one(
-            {"imageId": str(image_id)},
-            {"$pull": {"annotations": {"id": str(annotation_id)}}}
-        )
-        return result.modified_count > 0
+    # # delete a sigle annotation from  image_annotaions
+    # async def delete_single_annotation(self, image_id: str, annotation_id: str) -> bool:
+    #     result = await self.collection.update_one(
+    #         {"imageId": str(image_id)},
+    #         {"$pull": {"annotations": {"id": str(annotation_id)}}}
+    #     )
+    #     return result.modified_count > 0
 
-    # Optional: Add a single annotation to an existing image
-    async def add_annotation_to_image(self, image_id: str, annotation: dict) -> bool:
-        result = await self.collection.update_one(
-            {"imageId": str(image_id)},
-            {"$push": {"annotations": annotation}}
-        )
-        return result.modified_count > 0
+    # # Optional: Add a single annotation to an existing image
+    # async def add_annotation_to_image(self, image_id: str, annotation: dict) -> bool:
+    #     result = await self.collection.update_one(
+    #         {"imageId": str(image_id)},
+    #         {"$push": {"annotations": annotation}}
+    #     )
+    #     return result.modified_count > 0

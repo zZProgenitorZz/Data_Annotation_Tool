@@ -12,8 +12,8 @@ class RemarkRepo:
             return None
         return Remark(**doc)
 
-    async def get_all_remarks(self) -> list[Remark]:
-        cursor = self.collection.find()
+    async def get_all_remarks(self, dataset_id: str) -> list[Remark]:
+        cursor = self.collection.find({"datasetId": dataset_id})
         results = []
         async for doc in cursor:
             results.append(Remark(**doc))
@@ -23,8 +23,8 @@ class RemarkRepo:
         result = await self.collection.insert_one(remark)
         return str(result.inserted_id)
 
-    async def delete_remark(self, remark_id: str) -> bool:
-        result = await self.collection.delete_one({"_id": PyObjectId(remark_id)})
+    async def delete_remark(self, dataset_id: str) -> bool:
+        result = await self.collection.delete_many({"datasetId": dataset_id})
         return result.deleted_count > 0
 
     async def update_remark(self, remark_id: str, updated_remark: dict) -> bool:

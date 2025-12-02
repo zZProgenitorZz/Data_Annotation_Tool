@@ -14,7 +14,6 @@ export async function presignImages(datasetId, files) {
     })),
   };
   console.log(payload)
-  console.log(datasetId)
   const { data } = await api.post(`/image/${datasetId}/images/presign`, payload);
   
   return data;
@@ -39,10 +38,21 @@ export async function completeImagesBulk(items) {
  * List images for a dataset.
  * Response: [{ _id, originalFilename, contentType }, ...]
  */
-export async function listImages(datasetId) {
-  const { data } = await api.get(`/image/${datasetId}/all-images`);
+//export async function listImages(datasetId) {
+//  const { data } = await api.get(`/image/${datasetId}/all-images`);
+//  return data;
+//}
+
+// ImageService.js
+export async function listImages(datasetId, { limit, offset } = {}) {
+  const params = {};
+  if (limit !== undefined) params.limit = limit;
+  if (offset !== undefined) params.offset = offset;
+
+  const { data } = await api.get(`/image/${datasetId}/all-images`, { params });
   return data;
 }
+
 
 /**
  * Get a temporary signed GET URL to display/download an image.
@@ -79,33 +89,48 @@ export async function hardDeleteImage(image_id) {
 }
 
 export async function hardDeleteDatasetImages(dataset_id){
-  const {data} = await api.delete(`/image/dataset/${dataset_id}/hard`)
-  return data;
+  try{
+    const {data} = await api.delete(`/image/dataset/${dataset_id}/hard`)
+    return data;
+  } catch (error) {
+      if (error?.response?.status === 404) {
+         return;
+      } 
+      console.error("Error hard deleting dataset images:", error)
+      throw error;
+  }
 }
 
 
 
 
-export async function softDeleteImages(datasetId, imageIds) {
-  // Alleen params meesturen als we specifieke images willen deleten
-  const config =
-    imageIds && imageIds.length
-      ? { params: { image_id: imageIds } } // => ?image_id=a&image_id=b&...
-      : {};
+export async function softDeleteImages(datasetId) {
 
-  const { data } = await api.delete(`/image/${datasetId}/soft`, config);
-  return data; 
+ 
+  try {
+    const { data } = await api.delete(`/image/${datasetId}/all/soft`);
+    return data;
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return;
+    }
+    console.error("Error deleting image:", error);
+    throw error;
+  }
 }
 
-export async function softDeleteImage(datasetId, imageId) {
-  return softDeleteImages(datasetId, [imageId]);
+
+export async function softDeleteImage(imageId) {
+  
+  const response = await api.delete(`/image/${imageId}/soft`);
+  return response.data;
 }
+
 
 
 export async function softDeleteDatasetImages(datasetId) {
-  return softDeleteImages(datasetId, null);
+  return softDeleteImages(datasetId);
 }
-
 
 
 
@@ -126,6 +151,11 @@ export async function uploadGuestImages(datasetId, files) {
       },
     }
   );
-
   return res.data; // backend kan bijv. de image-metadata teruggeven
+}
+
+
+export async function getGuestImages(datasetId){
+  const response = await api.get(`/image/guest-images/${datasetId}`)
+  return response.data
 }

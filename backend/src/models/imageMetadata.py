@@ -44,7 +44,7 @@ class ImageMetadataDto(BaseModel):
     height: int
     fileType: str
 
-    # NEW
+    
     s3Key: Optional[str] = None
     contentType: Optional[str] = None
     sizeBytes: Optional[int] = None
@@ -65,7 +65,7 @@ class ImageMetadataUpdate(BaseModel):
     height: Optional[int] = None
     fileType: Optional[str] = None
 
-    # NEW
+    
     s3Key: Optional[str] = None
     contentType: Optional[str] = None
     sizeBytes: Optional[int] = None

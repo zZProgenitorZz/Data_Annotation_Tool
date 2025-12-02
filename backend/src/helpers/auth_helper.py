@@ -20,7 +20,9 @@ async def get_user_or_guest(
     # Probeer normale user
     try:
         user = await user_login.get_current_active_user(token)
+
         return user
+    
     except HTTPException as e:
         if e.status_code != 401:
             # andere fouten doorgeven
@@ -31,6 +33,7 @@ async def get_user_or_guest(
         raise HTTPException(status_code=401, detail="Could not validate credentials")
     
     guest = await user_login.get_guest_user_from_token(credentials)
+    
     return guest
 
 
@@ -52,6 +55,7 @@ def require_roles(allowed_roles: List[str]):
 
 def is_guest_user(user: UserDto) -> bool:
     """Returns True if user is a guest"""
+    
     return getattr(user, 'is_guest', False)
 
 

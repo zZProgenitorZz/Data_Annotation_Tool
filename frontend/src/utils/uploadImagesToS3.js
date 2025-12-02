@@ -113,9 +113,13 @@ export async function uploadImagesToS3({ datasetId, files, onProgress }) {
       height: only.height,
       // checksum: only.checksum,
     });
+    
   } else {
     await completeImagesBulk(completePayload);
+  
   }
 
   return completePayload;
 }
+
+
