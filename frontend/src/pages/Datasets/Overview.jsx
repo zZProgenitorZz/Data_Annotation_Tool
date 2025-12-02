@@ -189,9 +189,9 @@ const Overview = () => {
   const handleSaveDataset = async ({ dataset, files }) => {
     try {
       // 1) dataset aanmaken in backend
-      console.log(dataset)
+      
       const created = await createDataset(dataset);
-      console.log("ss")
+      
       const datasetId = created;
      
 

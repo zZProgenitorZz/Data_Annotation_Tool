@@ -66,7 +66,7 @@ export async function updateImageAnnotations_empty(imageId, forRemark = false) {
 }
 
 // Pakt ALLE annotaties (bbox + polygon) samen
-export async function updateAllImageAnnotations(imageId, boxes, polygons, ellipses, forRemark = false) {
+export async function updateAllImageAnnotations(imageId, boxes, polygons, ellipses, strokes, regions, forRemark = false) {
   const bboxAnnotations = (boxes || []).map((box) => ({
     id: box.id,
     label: box.category,
@@ -101,10 +101,28 @@ export async function updateAllImageAnnotations(imageId, boxes, polygons, ellips
     },
   }));
 
+  const pencilAnnotations = (strokes || []).map((stroke) => ({
+    id: stroke.id,
+    label: stroke.category,
+    type: "freehand",
+    geometry: {
+      path: (stroke.points || []).map((pt) => [pt.x, pt.y]),
+    },
+  }));
+
+  const maskAnnotations = (regions || []).map((rg) => ({
+    id: rg.id,
+    label: rg.category,
+    type: "mask",
+    geometry: {
+      maskPath: (rg.points || []).map((pt) => [pt.x, pt.y]),
+    },
+  }));
+
   const payload = {
     for_remark: forRemark,
     imageId,
-    annotations: [...bboxAnnotations, ...polygonAnnotations, ...ellipseAnnotations],
+    annotations: [...bboxAnnotations, ...polygonAnnotations, ...ellipseAnnotations, ...pencilAnnotations, ...maskAnnotations],
   };
 
   return updateImageAnnotation(imageId, payload);

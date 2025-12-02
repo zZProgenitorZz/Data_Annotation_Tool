@@ -15,7 +15,7 @@ function handleStyle(px, py) {
     transform: "translate(-50%, -50%)",
     cursor: "grab",
     pointerEvents: "auto",
-    zIndex: 200,
+    zIndex: 10,
   };
 }
 
@@ -31,7 +31,7 @@ function redDot(px, py) {
     background: "red",
     transform: "translate(-50%, -50%)",
     pointerEvents: "none",
-    zIndex: 180,
+    zIndex: 1,
   };
 }
 
@@ -86,7 +86,7 @@ export default function PolygonOverlay({
               borderRadius: "4px",
               fontSize: "10px",
               pointerEvents: "none",
-              zIndex: 150,
+              zIndex: 1,
             }}
           >
             {poly.category}
@@ -103,7 +103,7 @@ export default function PolygonOverlay({
           width: imgWidth,
           height: imgHeight,
           pointerEvents: "none",
-          zIndex: 100,
+          zIndex: 1,
         }}
       >
         {polygons.map((poly) => {
@@ -117,7 +117,7 @@ export default function PolygonOverlay({
               key={poly.id}
               points={pts.join(" ")}
               fill="transparent"
-              stroke="red"
+              stroke={selectedId === poly.id ? "rgb(255, 0, 0)" : "rgba(255, 0, 0, 0.6)"}
               strokeWidth="1.5"
               strokeLinejoin="round"
               style={{ cursor: "move", pointerEvents: "auto" }}
@@ -145,6 +145,9 @@ export default function PolygonOverlay({
           />
         )}
       </svg>
+
+      {/*"2px solid #ff0000ff"
+         "2px solid rgba(255, 0, 0, 0.6)", */}
 
       {/* RED DOTS (EVERY TAP) */}
       {draft.map((p, i) => {

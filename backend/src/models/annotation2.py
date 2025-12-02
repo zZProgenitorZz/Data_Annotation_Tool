@@ -29,7 +29,7 @@ class FreehandGeometry(BaseModel):
 
 
 class MaskGeometry(BaseModel):
-    maskPath: str  # e.g. SVG path string
+    maskPath: List[List[float]]  # [[x, y], [x, y], ...] representing the mask outline
 
 
 # ---- Annotation model ----

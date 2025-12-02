@@ -14,7 +14,7 @@ function handleStyle(px, py, cursor) {
     transform: "translate(-50%, -50%)",
     cursor,
     pointerEvents: "auto",
-    zIndex: 200,
+    zIndex: 10,
   };
 }
 
@@ -75,7 +75,7 @@ export default function EllipseOverlay({
                 cursor: "move",
                 background: "transparent",
                 boxSizing: "border-box",
-                zIndex: 100,
+                zIndex: 1,
               }}
             >
               {el.category && (
@@ -179,7 +179,7 @@ export default function EllipseOverlay({
               borderRadius: "50%",
               background: "rgba(0,163,255,0.12)",
               pointerEvents: "none",
-              zIndex: 80,
+              zIndex: 1,
             }}
           />
         );

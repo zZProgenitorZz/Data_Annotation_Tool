@@ -54,6 +54,12 @@ import PolygonOverlay from "./Tools/Polygon/PolygonOverlay";
 import { useEllipseTool } from "./Tools/Ellipse/EllipseTool";
 import EllipseOverlay from "./Tools/Ellipse/EllipseOverlay";
 
+import { usePencilTool } from "./Tools/Pencil/PencilTool";
+import PencilOverlay from "./Tools/Pencil/PencilOverlay";
+
+import { useMagicWandTool } from "./Tools/MagicWand/MagicWandTool";
+import MagicWandOverlay from "./Tools/MagicWand/MagicWandOverlay";
+
 
 import { getImageDrawRect } from "../../utils/annotationGeometry";
 
@@ -136,6 +142,18 @@ const AnnotationPage = () => {
     onResetHistory: resetGlobalHistory,
   });
 
+  // pencil tool
+  const pencil = usePencilTool(selectedCategory, selectedImageId, {
+    onHistoryPush: () => registerHistoryEntry("pencil"),
+    onResetHistory: resetGlobalHistory,
+  });
+
+  // magic wand tool
+  const mask = useMagicWandTool(selectedCategory, selectedImageId, {
+    onHistoryPush: () => registerHistoryEntry("mask"),
+    onResetHistory: resetGlobalHistory,
+  });
+
   const globalUndo = useCallback(() => {
     const stack = undoStackRef.current;
     if (stack.past.length === 0) return;
@@ -149,8 +167,12 @@ const AnnotationPage = () => {
       poly.undo();
     } else if (toolKey === "ellipse") {
       ellipse.undo();
+    } else if (toolKey === "pencil") {
+      pencil.undo();
+    } else if (toolKey === "mask") {
+      mask.undo();
     }
-  }, [bbox, poly, ellipse]);
+  }, [bbox, poly, ellipse, pencil, mask]);
 
   const globalRedo = useCallback(() => {
     const stack = undoStackRef.current;
@@ -165,8 +187,12 @@ const AnnotationPage = () => {
       poly.redo();
     } else if (toolKey === "ellipse") {
       ellipse.redo();
+    } else if (toolKey === "pencil") {
+      pencil.redo();
+    } else if (toolKey === "mask") {
+      mask.redo();
     }
-  }, [bbox, poly. ellipse]);
+  }, [bbox, poly, ellipse, pencil, mask]);
 
   //////////////////////////////
   // 1 functie om de rect te herberekenen
@@ -240,7 +266,11 @@ const AnnotationPage = () => {
             ? poly
             : selectedTool === "bounding"
             ? bbox
-            : ellipse;
+            : selectedTool === "ellipse"
+            ? ellipse
+            : selectedTool === "pencil"
+            ? pencil
+            : mask;
         activeTool.deleteSelected?.();
         return;
       }
@@ -248,7 +278,7 @@ const AnnotationPage = () => {
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedTool, bbox, poly, ellipse, globalUndo, globalRedo]);
+  }, [selectedTool, bbox, poly, ellipse, pencil, mask, globalUndo, globalRedo]);
 
 
 
@@ -398,19 +428,24 @@ const AnnotationPage = () => {
     const hasBbox = bbox.boxes && bbox.boxes.length > 0;
     const hasPoly = poly.polygons && poly.polygons.length > 0;
     const hasEllipse = ellipse.ellipses && ellipse.ellipses.length > 0; 
+    const hasStroke = pencil.strokes && pencil.strokes.length > 0;
+    const hasRegion = mask.regions && mask.regions.length > 0;
 
     // Geen enkele annotatie? Dan leeg wegschrijven.
-    if (!hasBbox && !hasPoly && !hasEllipse) {
+    if (!hasBbox && !hasPoly && !hasEllipse && !hasStroke && !hasRegion) {
       await updateImageAnnotations_empty(selectedImageId, false);
       return;
     }
 
+    
     // Alles in één keer saven
     await updateAllImageAnnotations(
       selectedImageId,
       hasBbox ? bbox.boxes : [],
       hasPoly ? poly.polygons : [],
       hasEllipse ? ellipse.ellipses : [],
+      hasStroke ? pencil.strokes : [],
+      hasRegion ? mask.regions : [],
       false
     );
   };
@@ -648,6 +683,8 @@ const AnnotationPage = () => {
     // eerst alle polygon-selecties weg
     poly.setSelectedId?.(null);
     ellipse.setSelectedId?.(null);
+    pencil.setSelectedId?.(null);
+    mask.setSelectedId?.(null);
 
     // daarna de originele bbox-logica uitvoeren
     bbox.onBoxMouseDown(e, id);
@@ -657,6 +694,8 @@ const AnnotationPage = () => {
     // ook bij resize: eerst polygon-deselect
     poly.setSelectedId?.(null);
     ellipse.setSelectedId?.(null);
+    pencil.setSelectedId?.(null);
+    mask.setSelectedId?.(null);
 
     // daarna de originele bbox-logica uitvoeren
     bbox.onHandleMouseDown(e, id, corner);
@@ -666,6 +705,8 @@ const AnnotationPage = () => {
     // eerst bbox-deselect
     bbox.setSelectedId?.(null);
     ellipse.setSelectedId?.(null);
+    pencil.setSelectedId?.(null);
+    mask.setSelectedId?.(null);
 
     // daarna de originele polygon-logica
     poly.onPolygonMouseDown(e, id);
@@ -675,6 +716,8 @@ const AnnotationPage = () => {
     // bij vertex drag ook bbox-deselect
     bbox.setSelectedId?.(null);
     ellipse.setSelectedId?.(null);
+    pencil.setSelectedId?.(null);
+    mask.setSelectedId?.(null);
 
     poly.onVertexMouseDown(e, polyId, index);
   };
@@ -683,6 +726,8 @@ const AnnotationPage = () => {
   const handlePolygonSelect = (id) => {
     bbox.setSelectedId?.(null);
     ellipse.setSelectedId?.(null);
+    pencil.setSelectedId?.(null);
+    mask.setSelectedId?.(null);
 
     poly.onPolygonSelect?.(id);
   };
@@ -691,6 +736,8 @@ const AnnotationPage = () => {
     // eerst bbox-deselect
     bbox.setSelectedId?.(null);
     poly.setSelectedId?.(null);
+    pencil.setSelectedId?.(null);
+    mask.setSelectedId?.(null);
     // daarna de originele ellipse-logica
     ellipse.onEllipseMouseDown(e, id);
   };
@@ -699,9 +746,42 @@ const AnnotationPage = () => {
     // ook bij resize: eerst bbox- en polygon-deselect
     bbox.setSelectedId?.(null);
     poly.setSelectedId?.(null);
+    pencil.setSelectedId?.(null);
+    mask.setSelectedId?.(null);
     // daarna de originele ellipse-logica uitvoeren
     ellipse.onHandleMouseDown(e, id, handle);
   };
+
+  const handleStrokeMouseDown = (e, id) => {
+    // eerst bbox-deselect
+    bbox.setSelectedId?.(null);
+    poly.setSelectedId?.(null);
+    ellipse.setSelectedId?.(null);
+    mask.setSelectedId?.(null);
+    // daarna de originele pencil-logica
+    pencil.onStrokeMouseDown(e, id);
+  }
+
+  const handleRegionMouseDown = (e, id) => {
+    // eerst bbox-deselect
+    bbox.setSelectedId?.(null);
+    poly.setSelectedId?.(null);
+    ellipse.setSelectedId?.(null);
+    pencil.setSelectedId?.(null);
+
+    // daarna de originele mask-logica
+    mask.onRegionMouseDown(e, id);
+  }
+
+  const handleMaskVertexMouseDown = (e, regionId, index) => {
+    // bij vertex drag ook bbox-deselect
+    bbox.setSelectedId?.(null);
+    poly.setSelectedId?.(null);
+    ellipse.setSelectedId?.(null);
+    pencil.setSelectedId?.(null);
+
+    mask.onVertexMouseDown(e, regionId, index);
+  }
 
 
 
@@ -876,8 +956,9 @@ const AnnotationPage = () => {
                 ref={(el) => {
                   bbox.containerRef.current = el;
                   poly.containerRef.current = el;
-                  //pencil.containerRef.current = el;
+                  pencil.containerRef.current = el;
                   ellipse.containerRef.current = el;
+                  mask.containerRef.current = el;
                 }}
 
                 // events
@@ -889,6 +970,10 @@ const AnnotationPage = () => {
                     poly.onCanvasClick(e);
                   } else if (selectedTool === "ellipse") {
                     ellipse.onCanvasMouseDown(e);
+                  } else if (selectedTool === "pencil") {
+                    pencil.onCanvasMouseDown(e);
+                  } else if (selectedTool === "mask") {
+                    mask.onCanvasClick(e);
                   }
                 }}
 
@@ -897,13 +982,16 @@ const AnnotationPage = () => {
                     bbox.onCanvasMouseMove(e);
                   } else if (selectedTool === "ellipse") {
                     ellipse.onCanvasMouseMove(e);
-                  }
+                  } else if (selectedTool === "pencil") {
+                    pencil.onCanvasMouseMove(e);
+                  } 
                 }}
 
                 onMouseUp={(e) => {
-                  // if (selectedTool === "pencil") pencil.onCanvasMouseUp();
+                  if (selectedTool === "pencil") pencil.onCanvasMouseUp();
                   if (selectedTool === "bounding") bbox.onCanvasMouseUp(e);
                   if (selectedTool === "ellipse") ellipse.onCanvasMouseUp(e);
+                 
                 }}
 
               >
@@ -913,11 +1001,13 @@ const AnnotationPage = () => {
                 ref={(el) => {
                 bbox.imageRef.current = el;
                 poly.imageRef.current = el;
-                // pencil.imageRef.current = el;
+                pencil.imageRef.current = el;
                 ellipse.imageRef.current = el;
+                mask.imageRef.current = el;
               }}
                   src={selectedUrl}
                   alt={selectedMeta?.fileName || "Microscope View"}
+                  crossOrigin="anonymous"
                   onLoad={recalcImageRect}
                   draggable="false"
                   style={{
@@ -997,13 +1087,37 @@ const AnnotationPage = () => {
                   selectedId={ellipse.selectedId}
                   onEllipseMouseDown={handleEllipseMouseDown}
                   onHandleMouseDown={handleEllipseHandleMouseDown}
+                  imgLeft={imgLeft}
+                  imgTop={imgTop}
+                  imgWidth={imgWidth}
+                  imgHeight={imgHeight}
+                />
+
+                <PencilOverlay
+                  strokes = {pencil.strokes}
+                  draft={selectedTool === "pencil" ? pencil.draft: []}
+                  selectedId={pencil.selectedId}
+                  
+                  imgLeft={imgLeft}
+                  imgTop={imgTop}
+                  imgWidth={imgWidth}
+                  imgHeight={imgHeight}
+                  onStrokeMouseDown={handleStrokeMouseDown} 
+                />
+
+                <MagicWandOverlay
+                  regions={mask.regions}
+                  selectedId={mask.selectedId}
+                  onVertexMouseDown={handleMaskVertexMouseDown}
+                  onRegionMouseDown={handleRegionMouseDown}
+                  onSelect={mask.setSelectedId}
 
                   imgLeft={imgLeft}
                   imgTop={imgTop}
                   imgWidth={imgWidth}
                   imgHeight={imgHeight}
                 />
-              
+                              
 
               {/* )} */}
 
@@ -1095,14 +1209,14 @@ const AnnotationPage = () => {
 
               {/* Magic wand */}
               <div
-                onClick={() => handleSelectTool("magicwand")}
+                onClick={() => handleSelectTool("mask")}
                 style={{
                   marginTop: "2px",
                   marginLeft: "8px",
                   width: "34px",
                   height: "34px",
                   backgroundImage:
-                    selectedTool === "magicwand" ? `url(${selectedBg})` : "none",
+                    selectedTool === "mask" ? `url(${selectedBg})` : "none",
                   backgroundSize: "cover",
                   backgroundPosition: "center",
                   display: "flex",
@@ -1129,14 +1243,52 @@ const AnnotationPage = () => {
               </div>
 
               {/* Separator line */}
-              <div
-                style={{
-                  height: "1px",
-                  backgroundColor: "rgba(0,0,0,0.10)",
-                  width: "100%",
-                  marginTop: "3px",
-                }}
-              />
+              {/* Magic Wand Threshold Slider */}
+              {selectedTool === "mask" && (
+                <div
+                  style={{
+                    marginTop: "6px",
+                    marginLeft: "7px",
+                    width: "147px",
+                    padding: "6px 6px",
+                    backgroundColor: "#F6F6F6",
+                    border: "1px solid rgba(0,0,0,0.15)",
+                    borderRadius: "6px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      color: "#333",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <span>Threshold</span>
+                    <span style={{ fontWeight: 700 }}>{mask.threshold}</span>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={1}
+                    max={10}
+                    value={mask.threshold}
+                    onChange={(e) => mask.setThreshold(Number(e.target.value))}
+                    style={{
+                      width: "100%",
+                      cursor: "pointer",
+                      accentColor: "#3F7790",
+                    }}
+                  />
+                </div>
+              )}
+
 
               {/* Category */}
               <div
@@ -1468,6 +1620,8 @@ const AnnotationPage = () => {
                 if (bbox.selectedId) return bbox.selectedId;
                 if (poly.selectedId) return poly.selectedId;
                 if (ellipse.selectedId) return ellipse.selectedId;
+                if (pencil.selectedId) return pencil.selectedId;
+                if (mask.selectedId) return mask.selectedId;
                 return null;
               }}
               imageId={selectedImageId}
