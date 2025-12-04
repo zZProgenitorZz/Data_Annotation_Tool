@@ -422,6 +422,8 @@ const DatasetWithRef = ({ dataset, editMode, localDataRef, users }) => {
   const [localData, setLocalData] = useState(dataset);
   const navigate = useNavigate();
 
+  const {currentUser, loading} = useContext(AuthContext);
+
 
   useEffect(() => {
     setLocalData(dataset);
@@ -432,6 +434,19 @@ const DatasetWithRef = ({ dataset, editMode, localDataRef, users }) => {
     localDataRef.current = localData;
   }, [localData, localDataRef]);
 
+  const isOwner = 
+    !loading &&
+    currentUser &&
+    localData?.createdBy &&
+    localData.createdBy === currentUser.id;
+
+  const isAssigned =
+    !loading &&
+    currentUser &&
+    Array.isArray(localData?.assignedTo) &&
+    localData.assignedTo.map((entry) => extractUserId(entry)).includes(String(currentUser.id));
+
+    const canStart = isOwner || isAssigned;
 
  
   const toggleDataset = () => setIsExpanded((s) => !s);
@@ -457,7 +472,6 @@ const DatasetWithRef = ({ dataset, editMode, localDataRef, users }) => {
     navigate("/annotation")
   }
 
-  
 
   return (
     <div
@@ -486,6 +500,7 @@ const DatasetWithRef = ({ dataset, editMode, localDataRef, users }) => {
             </button>
 
             {/*  Rechter 'Start' knop */}
+            {canStart && (
             <div className="flex items-center cursor-pointer hover:opacity-80 transition"
             onClick ={goToAnnotations}>
               <span className="text-[16px] font-[500] text-[#000000] mr-[4px]">
@@ -497,6 +512,7 @@ const DatasetWithRef = ({ dataset, editMode, localDataRef, users }) => {
                 className="w-[16px] h-[16px] mb-[2px]"
               />
             </div>
+            )}
           </div>
         )}
 

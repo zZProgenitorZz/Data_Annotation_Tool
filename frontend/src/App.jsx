@@ -18,8 +18,8 @@ function App() {
           <Route path="/" element={<PublicOnlyRoute><Login /> </PublicOnlyRoute>} />
           <Route path="/overview" element={<RequireAuth> <Overview /> </RequireAuth>} />
           <Route path="/imageList" element={<RequireAuth><ImageList/></RequireAuth>}/>
-          <Route path="/imageGrid" element={<ImageGrid/>}/>
-          <Route path="/annotation" element={<AnnotationPage/>}/>
+          <Route path="/imageGrid" element={<RequireAuth><ImageGrid/></RequireAuth>}/>
+          <Route path="/annotation" element={<RequireAuth><AnnotationPage/></RequireAuth>}/>
 
 
         </Routes>
