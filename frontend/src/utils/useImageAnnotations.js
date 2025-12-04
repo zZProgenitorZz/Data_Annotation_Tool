@@ -11,6 +11,12 @@ function isFresh(entry) {
   if (!entry) return false;
   return Date.now() - entry.timestamp < CACHE_TTL_MS;
 }
+export function setAnnotationCache(imageId, data) {
+  annotationCache.set(imageId, {
+    data,
+    timestamp: Date.now(),
+  });
+}
 
 /**
  * Prefetch een batch annotaties voor een lijst imageIds.

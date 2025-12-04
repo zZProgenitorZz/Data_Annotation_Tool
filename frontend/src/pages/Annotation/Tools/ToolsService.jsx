@@ -1,56 +1,57 @@
 import { useRef, useState, useEffect } from "react";
 import {  updateImageAnnotation, getImageAnnotation } from "../../../services/annotationService";
+import { setAnnotationCache } from "../../../utils/useImageAnnotations";
 
 
 
-export async function updateBboxImageAnnotations(imageId, boxes, forRemark = false) {
+// export async function updateBboxImageAnnotations(imageId, boxes, forRemark = false) {
   
-  const annotations = boxes.map((box) => ({
-    id: box.id,
-    label: box.category,
-    type: "bbox",
-    geometry: {
-      x: box.x,
-      y: box.y,
-      width: box.w,
-      height: box.h,
-    },
-  }));
+//   const annotations = boxes.map((box) => ({
+//     id: box.id,
+//     label: box.category,
+//     type: "bbox",
+//     geometry: {
+//       x: box.x,
+//       y: box.y,
+//       width: box.w,
+//       height: box.h,
+//     },
+//   }));
 
 
-  const payload = {
-    for_remark: forRemark,
-    imageId: imageId,
-    annotations: annotations,
-  };
-  console.log(payload)
+//   const payload = {
+//     for_remark: forRemark,
+//     imageId: imageId,
+//     annotations: annotations,
+//   };
+//   console.log(payload)
 
-  return updateImageAnnotation(imageId, payload)
-}
+//   return updateImageAnnotation(imageId, payload)
+// }
 
-export async function updatePolygonImageAnnotations(
-  imageId,
-  polygons,
-  forRemark = false
-) {
-  const annotations = polygons.map((polygon) => ({
-    id: polygon.id,
-    label: polygon.category,
-    type: "polygon",
-    geometry: {
-      // lijst met punten in genormaliseerde coords (0..1)
-      points: polygon.points.map((pt) => [pt.x, pt.y]),
-    },
-  }));
+// export async function updatePolygonImageAnnotations(
+//   imageId,
+//   polygons,
+//   forRemark = false
+// ) {
+//   const annotations = polygons.map((polygon) => ({
+//     id: polygon.id,
+//     label: polygon.category,
+//     type: "polygon",
+//     geometry: {
+//       // lijst met punten in genormaliseerde coords (0..1)
+//       points: polygon.points.map((pt) => [pt.x, pt.y]),
+//     },
+//   }));
 
-  const payload = {
-    for_remark: forRemark,
-    imageId: imageId,
-    annotations: annotations,
-  };
+//   const payload = {
+//     for_remark: forRemark,
+//     imageId: imageId,
+//     annotations: annotations,
+//   };
 
-  return updateImageAnnotation(imageId, payload);
-}
+//   return updateImageAnnotation(imageId, payload);
+// }
 
 
 export async function updateImageAnnotations_empty(imageId, forRemark = false) {
@@ -66,6 +67,7 @@ export async function updateImageAnnotations_empty(imageId, forRemark = false) {
 }
 
 // Pakt ALLE annotaties (bbox + polygon) samen
+
 export async function updateAllImageAnnotations(imageId, boxes, polygons, ellipses, strokes, regions, forRemark = false) {
   const bboxAnnotations = (boxes || []).map((box) => ({
     id: box.id,
@@ -125,5 +127,8 @@ export async function updateAllImageAnnotations(imageId, boxes, polygons, ellips
     annotations: [...bboxAnnotations, ...polygonAnnotations, ...ellipseAnnotations, ...pencilAnnotations, ...maskAnnotations],
   };
 
-  return updateImageAnnotation(imageId, payload);
+  const result = await updateImageAnnotation(imageId, payload);
+
+
+  setAnnotationCache(imageId, payload);
 }

@@ -69,6 +69,7 @@ import { updateImageAnnotations_empty, updateAllImageAnnotations } from "./Tools
 
 
 
+
 const AnnotationPage = () => {
   const navigate = useNavigate();
 
@@ -200,6 +201,30 @@ const AnnotationPage = () => {
     }
   }, [bbox, poly, ellipse, pencil, mask]);
 
+  const globalDeleteSelected = useCallback(() => {
+  // volgorde is jouw keuze; dit is een voorbeeld
+  if (bbox.selectedId != null) {
+    bbox.deleteSelected?.();
+    return;
+  }
+  if (poly.selectedId != null) {
+    poly.deleteSelected?.();
+    return;
+  }
+  if (ellipse.selectedId != null) {
+    ellipse.deleteSelected?.();
+    return;
+  }
+  if (pencil.selectedId != null) {
+    pencil.deleteSelected?.();
+    return;
+  }
+  if (mask.selectedId != null) {
+    mask.deleteSelected?.();
+    return;
+  }
+}, [bbox, poly, ellipse, pencil, mask]);
+
   //////////////////////////////
   // 1 functie om de rect te herberekenen
   const recalcImageRect = useCallback(() => {
@@ -271,24 +296,14 @@ const AnnotationPage = () => {
       }
       if (key === "delete" || key === "backspace") {
         e.preventDefault();
-        const activeTool =
-          selectedTool === "polygon"
-            ? poly
-            : selectedTool === "bounding"
-            ? bbox
-            : selectedTool === "ellipse"
-            ? ellipse
-            : selectedTool === "pencil"
-            ? pencil
-            : mask;
-        activeTool.deleteSelected?.();
+        globalDeleteSelected();
         return;
       }
     };
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedTool, bbox, poly, ellipse, pencil, mask, globalUndo, globalRedo]);
+  }, [selectedTool, bbox, poly, ellipse, pencil, mask, globalUndo, globalRedo, globalDeleteSelected]);
 
 
 
@@ -456,6 +471,8 @@ const AnnotationPage = () => {
   !imageReady;                   // image nog niet klaar om te tonen
 
 
+
+
   const handleSaveAnnotation = async () => {
     if (!selectedImageId) return;
 
@@ -484,15 +501,20 @@ const AnnotationPage = () => {
     );
   };
 
+  
 
 
 
   // Next Image
-  const handleNextImage = useCallback(() => {
+  const handleNextImage = useCallback( () => {
     if (!selectedImageId) return;
+
+    handleSaveAnnotation();
 
     const index = imageMetas.findIndex((img) => img.id === selectedImageId);
     if (index === -1 || index >= imageMetas.length - 1) return;
+
+    
 
     const nextIndex = index + 1;
     const nextId = imageMetas[nextIndex].id;
@@ -504,14 +526,18 @@ const AnnotationPage = () => {
     if (nextIndex >= threshold && windowEnd < imageMetas.length) {
       setOffset((prev) => prev + LIMIT);
     }
-  }, [selectedImageId, imageMetas, offset, LIMIT]); // deps
+  }, [selectedImageId, imageMetas, offset, LIMIT, handleSaveAnnotation]); // deps
 
   // Previous Image
-  const handlePrevImage = useCallback(() => {
+  const handlePrevImage = useCallback( () => {
     if (!selectedImageId) return;
+
+    handleSaveAnnotation();
 
     const index = imageMetas.findIndex((img) => img.id === selectedImageId);
     if (index <= 0) return;
+
+   
 
     const prevIndex = index - 1;
     const prevId = imageMetas[prevIndex].id;
@@ -520,7 +546,7 @@ const AnnotationPage = () => {
     if (prevIndex < offset && offset > 0) {
       setOffset((prev) => Math.max(0, prev - LIMIT));
     }
-  }, [selectedImageId, imageMetas, offset, LIMIT]);
+  }, [selectedImageId, imageMetas, offset, LIMIT, handleSaveAnnotation]); // deps
 
 
 
@@ -561,6 +587,8 @@ const AnnotationPage = () => {
     img.fileName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+
+
   
   const ROW_H = 24; // row height for file list
   const VISIBLE_ROWS = 7;
@@ -571,7 +599,13 @@ const AnnotationPage = () => {
 
 
 
-  const handleBackClick = () => navigate("/overview");
+  const handleBackClick = async () => {
+    await handleSaveAnnotation();  
+    navigate("/overview")
+  };
+
+
+
   const handleSelectTool = (toolId) =>
     setSelectedTool(toolId === selectedTool ? null : toolId);
 
@@ -819,10 +853,6 @@ const AnnotationPage = () => {
 
 
 
-    
-
-
-
 
   return (
     <div
@@ -830,7 +860,7 @@ const AnnotationPage = () => {
       className="min-h-screen flex flex-col bg-gradient-to-b from-[#44F3C9] to-[#3F7790] relative select-none"
     >
       {/* === Header === */}
-      <Header  currentUser={currentUser}/>
+      <Header  currentUser={currentUser} onLogoClick={handleBackClick} />
 
       {/* === Outer container === */}
       <div className="flex flex-1 items-center justify-center px-[10px] mt-[0px] mb-[12px]">
@@ -1479,7 +1509,11 @@ const AnnotationPage = () => {
                       <div
                         key={img.id}
                         data-image-id={img.id}
-                        onClick={() => setSelectedImageId(img.id)}
+                        onClick={() => { 
+                          if (img.id === selectedImageId) return;
+                          handleSaveAnnotation();
+                          setSelectedImageId(img.id);
+                        }}
                         style={{
                           height: `${ROW_H}px`,
                           lineHeight: `${ROW_H}px`,

@@ -1,8 +1,12 @@
 import LogoutButton from "./LogoutButton"
 import { useNavigate } from "react-router-dom";
 
-export default function Header({title, currentUser}) {
+export default function Header({title, currentUser, onLogoClick, onLogoutClick}) {
     const navigate = useNavigate()
+
+    const handleLogo = onLogoClick ?? (() => navigate("/overview"));
+
+    const handleLogout = onLogoutClick ?? <LogoutButton/>;
 
 
     return (
@@ -16,7 +20,7 @@ export default function Header({title, currentUser}) {
                 alt="AiDx Medical Logo"
                 className="absolute left-[0px] top-[2px] bottom-[0px] pl-[3px] h-[40px] cursor-pointer 
                     transition-transform duration-200 hover:scale-105"
-                onClick = {() => navigate("/overview")}
+                onClick = {handleLogo}
                 />
                 {/* Title middle */}
                 <h1
@@ -32,7 +36,7 @@ export default function Header({title, currentUser}) {
                             {currentUser.username }
                         </span>
                         )}
-                    <LogoutButton/>
+                    {handleLogout}
                 </div>
             </div>
     );
