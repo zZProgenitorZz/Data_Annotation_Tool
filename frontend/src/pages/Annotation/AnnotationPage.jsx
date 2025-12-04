@@ -62,6 +62,7 @@ import MagicWandOverlay from "./Tools/MagicWand/MagicWandOverlay";
 
 
 import { getImageDrawRect } from "../../utils/annotationGeometry";
+import { prefetchAnnotations } from "../../utils/useImageAnnotations";
 
 import { updateImageAnnotations_empty, updateAllImageAnnotations } from "./Tools/ToolsService";
 
@@ -93,20 +94,25 @@ const AnnotationPage = () => {
 
   const [dataset, setDataset] = useState(null); 
   const [imageMetas, setImageMetas] = useState([]);  // metadata from mongo
-  const [urls, setUrls] = useState({});              // { [imageId]: url}
+
+  const [urls, setUrls] = useState({});              // { [imageId]: {url, loadedAt}}
+
   const [selectedImageId, setSelectedImageId] = useState(null);
 
   const [imagesLoading, setImagesLoading] = useState(false)
   const [labelLoading, setLabelLoading] = useState(false)
   const [offset, setOffset] = useState(0)
   const LIMIT = 50;
+  const CACHE_TTL_MS = 60 * 60 * 1000; // 1 uur
+
 
   const selectedMeta = imageMetas.find((img) => img.id === selectedImageId) || null;
-  const selectedUrl = selectedImageId ? urls[selectedImageId] : null;
+  const selectedUrl = selectedImageId ? urls[selectedImageId]?.url : null;
   const totalImages = imageMetas.length;
   const currentIndex = selectedImageId ? imageMetas.findIndex((img) => img.id === selectedImageId) + 1 : 0;
   
   const [reloadImages, setReloadImages] = useState(null)
+  const [imageReady, setImageReady] = useState(false);
 
   //geometry of the image in the container
   const [imageRect, setImageRect] = useState(null)
@@ -222,6 +228,10 @@ const AnnotationPage = () => {
   }, [recalcImageRect]);
 ////////////////////////////////
 
+  useEffect(() => {
+    // elke keer als we naar een andere image/url gaan → opnieuw laden
+    setImageReady(false);
+  }, [selectedImageId, selectedUrl]);
 
   // get selectedDataset
   useEffect (() => {
@@ -333,7 +343,6 @@ const AnnotationPage = () => {
 
   //getSignedUrl(get real images)------------ --------------------------------------------
   useEffect(() => {
-    // als er geen images zijn of auth nog aan het laden is: niks doen
     if (imageMetas.length === 0 || loading) return;
 
     let cancelled = false;
@@ -342,15 +351,27 @@ const AnnotationPage = () => {
       const start = offset;
       const end = Math.min(start + LIMIT, imageMetas.length);
       const slice = imageMetas.slice(start, end);
+      if (slice.length === 0) return;
 
-      // USER: S3 signed URLs
+      const imageIds = slice.map((img) => img.id);
+      const now = Date.now();
+
+      // 1) Annotaties prefetchen (achtergrond)
+      prefetchAnnotations(imageIds).catch((err) =>
+        console.error("Annotation prefetch failed:", err)
+      );
+
+      // 2) URLs prefetchen met TTL-check
       if (authType === "user") {
         const pairs = await Promise.all(
           slice.map(async (img) => {
-            if (urls[img.id]) return null; // al bekend
+            const existing = urls[img.id];
+            if (existing && now - existing.loadedAt < CACHE_TTL_MS) {
+              return null; // nog vers genoeg
+            }
             try {
               const { url } = await getSignedUrl(img.id);
-              return [img.id, url];
+              return [img.id, { url, loadedAt: Date.now() }];
             } catch {
               return [img.id, null];
             }
@@ -359,7 +380,7 @@ const AnnotationPage = () => {
 
         if (cancelled) return;
 
-        const valid = pairs.filter(Boolean);
+        const valid = pairs.filter((p) => p && p[1]);
         if (valid.length) {
           setUrls((prev) => ({
             ...prev,
@@ -368,16 +389,18 @@ const AnnotationPage = () => {
         }
       }
 
-      // GUEST: data-urls uit base64 (img.data)
       if (authType === "guest") {
         const pairs = slice
           .map((img) => {
-            if (urls[img.id]) return null; // al bekend
-            if (!img.data) return null;    // safety
+            const existing = urls[img.id];
+            if (existing && now - existing.loadedAt < CACHE_TTL_MS) {
+              return null;
+            }
+            if (!img.data) return null;
 
             const mime = img.contentType || "image/jpeg";
             const dataUrl = `data:${mime};base64,${img.data}`;
-            return [img.id, dataUrl];
+            return [img.id, { url: dataUrl, loadedAt: Date.now() }];
           })
           .filter(Boolean);
 
@@ -393,10 +416,11 @@ const AnnotationPage = () => {
     }
 
     prefetch();
+
     return () => {
       cancelled = true;
     };
-  }, [imageMetas, offset, authType, loading]); // urls kun je weglaten om extra reruns te voorkomen
+  }, [imageMetas, offset, authType, loading]);
 
 
   // auto-select last viewed image (or first) per dataset
@@ -420,6 +444,16 @@ const AnnotationPage = () => {
       setSelectedImageId(imageMetas[0].id);
     }
   }, [dataset, imageMetas]);
+
+  const showInitialLoading =
+  loading ||                       // auth nog bezig
+  imagesLoading ||                 // images worden nog geladen
+  labelLoading ||                  // categories worden nog geladen
+  !dataset ||                      // dataset nog niet uit localStorage
+  imageMetas.length === 0 ||       // nog geen images
+  !selectedImageId ||              // nog geen geselecteerde image
+  !selectedUrl ||                  // url van de selected image nog niet bekend
+  !imageReady;                   // image nog niet klaar om te tonen
 
 
   const handleSaveAnnotation = async () => {
@@ -922,106 +956,125 @@ const AnnotationPage = () => {
             }}
           >
             {/* === Image area === */}
+          <div
+            className="flex justify-center items-center"
+            style={{
+              flex: 1,
+              overflow: "hidden",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {/* Outer container blijft altijd bestaan */}
             <div
-              className="flex justify-center items-center"
               style={{
-                flex: 1,
+                aspectRatio: "4 / 3",
+                width: "100%",
+                height: "100%",
+                maxWidth: "calc(100% - 20px)",
+                maxHeight: "100%",
+                backgroundColor: "#FFFFFF",
                 overflow: "hidden",
                 display: "flex",
+                paddingTop: "7px",
+                paddingBottom: "7px",
+                boxSizing: "border-box",
                 alignItems: "center",
                 justifyContent: "center",
+                position: "relative", // belangrijk voor overlay
+                cursor:
+                  selectedTool === "bounding" || selectedTool === "polygon"
+                    ? "crosshair"
+                    : "default",
+              }}
+              ref={(el) => {
+                bbox.containerRef.current = el;
+                poly.containerRef.current = el;
+                pencil.containerRef.current = el;
+                ellipse.containerRef.current = el;
+                mask.containerRef.current = el;
+              }}
+              // events
+              onMouseDown={(e) => {
+                if (selectedTool === "bounding") {
+                  bbox.onCanvasMouseDown(e);
+                } else if (selectedTool === "polygon") {
+                  poly.onCanvasClick(e);
+                } else if (selectedTool === "ellipse") {
+                  ellipse.onCanvasMouseDown(e);
+                } else if (selectedTool === "pencil") {
+                  pencil.onCanvasMouseDown(e);
+                } else if (selectedTool === "mask") {
+                  mask.onCanvasClick(e);
+                }
+              }}
+              onMouseMove={(e) => {
+                if (selectedTool === "bounding") {
+                  bbox.onCanvasMouseMove(e);
+                } else if (selectedTool === "ellipse") {
+                  ellipse.onCanvasMouseMove(e);
+                } else if (selectedTool === "pencil") {
+                  pencil.onCanvasMouseMove(e);
+                }
+              }}
+              onMouseUp={(e) => {
+                if (selectedTool === "pencil") pencil.onCanvasMouseUp();
+                if (selectedTool === "bounding") bbox.onCanvasMouseUp(e);
+                if (selectedTool === "ellipse") ellipse.onCanvasMouseUp(e);
               }}
             >
-              <div
-                style={{
-                  aspectRatio: "4 / 3",
-                  width: "100%",
-                  height: "100%",
-                  maxWidth: "calc(100% - 20px)",
-                  maxHeight: "100%",
-                  backgroundColor: "#FFFFFF",
-                  overflow: "hidden",
-                  display: "flex",
-                  paddingTop: "7px",
-                  paddingBottom: "7px",
-                  boxSizing: "border-box",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  position: "relative",
-                  // cusor logic
-                  cursor:
-                    selectedTool === "bounding" ? "crosshair" : selectedTool === "polygon" ? "crosshair" : "default",
-                  }}
-                
-                ref={(el) => {
-                  bbox.containerRef.current = el;
-                  poly.containerRef.current = el;
-                  pencil.containerRef.current = el;
-                  ellipse.containerRef.current = el;
-                  mask.containerRef.current = el;
-                }}
+            
 
-                // events
-                onMouseDown={(e) => {
-                  if (selectedTool === "bounding") {
-                    bbox.onCanvasMouseDown(e);
-                  } else if (selectedTool === "polygon") {
-                    // polygon draws on click but mousedown is fine too
-                    poly.onCanvasClick(e);
-                  } else if (selectedTool === "ellipse") {
-                    ellipse.onCanvasMouseDown(e);
-                  } else if (selectedTool === "pencil") {
-                    pencil.onCanvasMouseDown(e);
-                  } else if (selectedTool === "mask") {
-                    mask.onCanvasClick(e);
-                  }
-                }}
-
-                onMouseMove={(e) => {
-                  if (selectedTool === "bounding") {
-                    bbox.onCanvasMouseMove(e);
-                  } else if (selectedTool === "ellipse") {
-                    ellipse.onCanvasMouseMove(e);
-                  } else if (selectedTool === "pencil") {
-                    pencil.onCanvasMouseMove(e);
-                  } 
-                }}
-
-                onMouseUp={(e) => {
-                  if (selectedTool === "pencil") pencil.onCanvasMouseUp();
-                  if (selectedTool === "bounding") bbox.onCanvasMouseUp(e);
-                  if (selectedTool === "ellipse") ellipse.onCanvasMouseUp(e);
-                 
-                }}
-
-              >
-
-              {/* IMAGE */}
+              {/* === IMAGE === */}
               <img
                 ref={(el) => {
-                bbox.imageRef.current = el;
-                poly.imageRef.current = el;
-                pencil.imageRef.current = el;
-                ellipse.imageRef.current = el;
-                mask.imageRef.current = el;
-              }}
-                  src={selectedUrl}
-                  alt={selectedMeta?.fileName || "Microscope View"}
-                  crossOrigin="anonymous"
-                  onLoad={recalcImageRect}
-                  draggable="false"
+                  bbox.imageRef.current = el;
+                  poly.imageRef.current = el;
+                  pencil.imageRef.current = el;
+                  ellipse.imageRef.current = el;
+                  mask.imageRef.current = el;
+                }}
+                src={selectedUrl}
+                alt={selectedMeta?.fileName || "Microscope View"}
+                crossOrigin="anonymous"
+                draggable="false"
+                onLoad={() => {
+                  // 1) zodra de image echt geladen is → rect opnieuw berekenen
+                  recalcImageRect();
+                  // 2) markeren dat deze image visueel klaar is
+                  setImageReady(true);
+                }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  display: "block",
+                  pointerEvents: "none",
+                }}
+              />
+
+              {/* OVERLAY LOADER zolang imageLoaded false is */}
+              {showInitialLoading && (
+                <div
                   style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "contain",
-                    display: "block",
-                    pointerEvents:"none",
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(255,255,255,0.6)",
+                    pointerEvents: "none",
+                    zIndex: 100,
                   }}
-                />
-              {/* === CROSSHAIR (CLIPPED TO IMAGE) === */}
+                >
+                  <div className="w-10 h-10 rounded-full border-4 border-gray-300 border-t-[#3F7790] animate-spin" />
+                </div>
+              )}
+
+              {/* === CROSSHAIR === */}
               {selectedTool === "bounding" && bbox.mousePos && !bbox.draft && (
                 <>
-                  {/* Vertical line */}
                   <div
                     style={{
                       position: "absolute",
@@ -1034,8 +1087,6 @@ const AnnotationPage = () => {
                       zIndex: 50,
                     }}
                   />
-
-                  {/* Horizontal line */}
                   <div
                     style={{
                       position: "absolute",
@@ -1047,82 +1098,79 @@ const AnnotationPage = () => {
                       pointerEvents: "none",
                       zIndex: 50,
                     }}
-                  />
-                </>
+                  />
+                </>
               )}
-              {/* === BOUNDING BOX OVERLAY === */}
-              
-                <BoundingBoxOverlay
-                  boxes={bbox.boxes}
-                  draft={selectedTool === "bounding" ? bbox.draft : null}
-                  selectedId={bbox.selectedId}
-                  setSelectedId={bbox.setSelectedId}
-                  onBoxMouseDown= {handleBoxMouseDown}
-                  onHandleMouseDown={handleBoxHandleMouseDown}
-                  imgLeft={imgLeft}
-                  imgTop={imgTop}
-                  imgWidth={imgWidth}
-                  imgHeight={imgHeight}
-                />
-              
 
-              {/* POLYGON overlay */}
-              
-                <PolygonOverlay
-                  polygons={poly.polygons}
-                  draft={selectedTool === "polygon" ? poly.draft : []}
-                  selectedId={poly.selectedId}
-                  onVertexMouseDown={handleVertexMouseDown}
-                  onPolygonMouseDown={handlePolygonMouseDown}
-                  onSelect={handlePolygonSelect}
-                  imgLeft={imgLeft}
-                  imgTop={imgTop}
-                  imgWidth={imgWidth}
-                  imgHeight={imgHeight}
-                />
+              {/* === BBOX OVERLAY === */}
+              <BoundingBoxOverlay
+                boxes={bbox.boxes}
+                draft={selectedTool === "bounding" ? bbox.draft : null}
+                selectedId={bbox.selectedId}
+                setSelectedId={bbox.setSelectedId}
+                onBoxMouseDown={handleBoxMouseDown}
+                onHandleMouseDown={handleBoxHandleMouseDown}
+                imgLeft={imgLeft}
+                imgTop={imgTop}
+                imgWidth={imgWidth}
+                imgHeight={imgHeight}
+              />
 
-                <EllipseOverlay
-                  ellipses={ellipse.ellipses}
-                  draft={selectedTool === "ellipse" ? ellipse.draft : null}
-                  selectedId={ellipse.selectedId}
-                  onEllipseMouseDown={handleEllipseMouseDown}
-                  onHandleMouseDown={handleEllipseHandleMouseDown}
-                  imgLeft={imgLeft}
-                  imgTop={imgTop}
-                  imgWidth={imgWidth}
-                  imgHeight={imgHeight}
-                />
+              {/* POLYGON */}
+              <PolygonOverlay
+                polygons={poly.polygons}
+                draft={selectedTool === "polygon" ? poly.draft : []}
+                selectedId={poly.selectedId}
+                onVertexMouseDown={handleVertexMouseDown}
+                onPolygonMouseDown={handlePolygonMouseDown}
+                onSelect={handlePolygonSelect}
+                imgLeft={imgLeft}
+                imgTop={imgTop}
+                imgWidth={imgWidth}
+                imgHeight={imgHeight}
+              />
 
-                <PencilOverlay
-                  strokes = {pencil.strokes}
-                  draft={selectedTool === "pencil" ? pencil.draft: []}
-                  selectedId={pencil.selectedId}
-                  
-                  imgLeft={imgLeft}
-                  imgTop={imgTop}
-                  imgWidth={imgWidth}
-                  imgHeight={imgHeight}
-                  onStrokeMouseDown={handleStrokeMouseDown} 
-                />
+              {/* ELLIPSE */}
+              <EllipseOverlay
+                ellipses={ellipse.ellipses}
+                draft={selectedTool === "ellipse" ? ellipse.draft : null}
+                selectedId={ellipse.selectedId}
+                onEllipseMouseDown={handleEllipseMouseDown}
+                onHandleMouseDown={handleEllipseHandleMouseDown}
+                imgLeft={imgLeft}
+                imgTop={imgTop}
+                imgWidth={imgWidth}
+                imgHeight={imgHeight}
+              />
 
-                <MagicWandOverlay
-                  regions={mask.regions}
-                  selectedId={mask.selectedId}
-                  onVertexMouseDown={handleMaskVertexMouseDown}
-                  onRegionMouseDown={handleRegionMouseDown}
-                  onSelect={mask.setSelectedId}
+              {/* PENCIL */}
+              <PencilOverlay
+                strokes={pencil.strokes}
+                draft={selectedTool === "pencil" ? pencil.draft : []}
+                selectedId={pencil.selectedId}
+                imgLeft={imgLeft}
+                imgTop={imgTop}
+                imgWidth={imgWidth}
+                imgHeight={imgHeight}
+                onStrokeMouseDown={handleStrokeMouseDown}
+              />
 
-                  imgLeft={imgLeft}
-                  imgTop={imgTop}
-                  imgWidth={imgWidth}
-                  imgHeight={imgHeight}
-                />
-                              
-
-              {/* )} */}
-
-              </div>
+              {/* MAGIC WAND */}
+              <MagicWandOverlay
+                regions={mask.regions}
+                selectedId={mask.selectedId}
+                onVertexMouseDown={handleMaskVertexMouseDown}
+                onRegionMouseDown={handleRegionMouseDown}
+                onSelect={mask.setSelectedId}
+                imgLeft={imgLeft}
+                imgTop={imgTop}
+                imgWidth={imgWidth}
+                imgHeight={imgHeight}
+              />
             </div>
+          </div>
+
+              
 
             {/* === Tools panel (RIGHT) === */}
             <div
