@@ -31,12 +31,46 @@ class MetadataService:
 
     
     # -------------------soft delete
-    async def soft_delete_image(self, image_id: str, current_user: UserDto | None = None) -> bool:
-        soft_delete = ImageMetadataUpdate(
-            is_active = False
-        )
+    async def soft_delete_image(
+        self,
+        image_id: str,
+        current_user: UserDto | None = None
+    ) -> bool:
+        """
+        Soft delete één image:
+        - is_active -> False
+        - dataset.total_Images --
+        - als image.is_completed == True: dataset.completed_Images --
+        """
+        image = await self.image_repo.get_image_metadata_by_id(image_id)
+        if not image:
+            raise NotFoundError(f"Image with id {image_id} not found")
+
+        # al inactive? dan niets doen
+        if not image.is_active:
+            return False
+
+        was_completed = bool(getattr(image, "is_completed", False))
+
+        # 1. image zelf soft-deleten
+        soft_delete = ImageMetadataUpdate(is_active=False)
         soft_metadata = soft_delete.model_dump(exclude_unset=True)
-        return await self.image_repo.update_image_metadata(image_id, soft_metadata)
+        success = await self.image_repo.update_image_metadata(image_id, soft_metadata)
+        if not success:
+            return False
+
+        # 2. total_Images --
+        await self.update_dataset_image_count(image.datasetId, -1, current_user)
+
+        # 3. completed_Images -- als hij meetelde als completed
+        if was_completed:
+            await self.dataset_repo.update_dataset_state(
+                dataset_id=str(image.datasetId),
+                delta_completed=-1,
+            )
+
+        return True
+    
     
     # soft delete all images
     async def soft_delete_images(
@@ -63,25 +97,56 @@ class MetadataService:
         if not images_to_delete:
             return 0
 
-        count = 0
+        deleted = 0
         for image in images_to_delete:
             succes = await self.soft_delete_image(str(image.id))
             if succes:
-                count += 1
+                deleted += 1
+            
 
-        # update dataset image count
-        if count > 0:
-            await self.update_dataset_image_count(dataset_id, -count, current_user)
 
-        return count
+        return deleted
 
     # -------------------restore
-    async def restore_image(self, image_id: str) -> bool:
-        restore = ImageMetadataUpdate(
-            is_active = True
-        )
+    async def restore_image(
+        self,
+        image_id: str,
+        current_user: UserDto | None = None
+    ) -> bool:
+        """
+        Restore één image:
+        - is_active -> True
+        - dataset.total_Images ++
+        - als image.is_completed == True: dataset.completed_Images ++
+        """
+        image = await self.image_repo.get_image_metadata_by_id(image_id)
+        if not image:
+            raise NotFoundError(f"Image with id {image_id} not found")
+
+        # al actief? niets meer te doen
+        if image.is_active:
+            return False
+
+        was_completed = bool(getattr(image, "is_completed", False))
+
+        restore = ImageMetadataUpdate(is_active=True)
         restore_metadata = restore.model_dump(exclude_unset=True)
-        return await self.image_repo.update_image_metadata(image_id, restore_metadata)
+        success = await self.image_repo.update_image_metadata(image_id, restore_metadata)
+        if not success:
+            return False
+
+        # total_Images ++
+        await self.update_dataset_image_count(image.datasetId, 1, current_user)
+
+        # completed_Images ++ als deze image een completed image is
+        if was_completed:
+            await self.dataset_repo.update_dataset_state(
+                dataset_id=str(image.datasetId),
+                delta_completed=1,
+            )
+
+        return True
+
     
     # restore all images
     async def restore_images(self, image_ids: list[str] | None = None, dataset_id: str | None = None, current_user: UserDto | None = None) -> int:
@@ -113,10 +178,6 @@ class MetadataService:
             if succes:
                 count += 1
 
-        # update dataset image count
-        if count > 0:
-            await self.update_dataset_image_count(dataset_id, count, current_user)
-
         return count
 
     
@@ -127,6 +188,7 @@ class MetadataService:
             id=str(image.id),
             datasetId=str(image.datasetId) if image.datasetId else None,
             fileName=image.fileName,
+            is_completed=image.is_completed,
             folderPath=image.folderPath,
             width=image.width,
             height=image.height,
@@ -150,3 +212,9 @@ class MetadataService:
 
         dataset.total_Images = max(dataset.total_Images, 0)
         await self.dataset_service.update_dataset(dataset_id, dataset, current_user=current_user)
+
+  
+        
+
+
+

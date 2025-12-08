@@ -139,6 +139,39 @@ function maskToHullPolygon(mask, WIDTH, HEIGHT) {
   };
 }
 
+function mergeMasks(maskA, maskB) {
+  const out = new Uint8Array(maskA.length);
+  for (let i = 0; i < maskA.length; i++) {
+    out[i] = maskA[i] || maskB[i] ? 1 : 0;
+  }
+  return out;
+}
+
+function findMergeTarget(regions, newMask, W, H, masksMap) {
+  const DILATION = 1;
+
+  let newDilated = new Uint8Array(newMask);
+  for (let i = 0; i < DILATION; i++) newDilated = dilate(newDilated, W, H);
+
+  // van achter naar voren zodat “laatste regio” prioriteit krijgt
+  for (const r of [...regions].reverse()) {
+    const oldMask = masksMap.get(r.id);
+    if (!oldMask) continue;
+
+    let oldDilated = new Uint8Array(oldMask);
+    for (let i = 0; i < DILATION; i++) oldDilated = dilate(oldDilated, W, H);
+
+    for (let i = 0; i < W * H; i++) {
+      if (newDilated[i] && oldDilated[i]) {
+        return r;
+      }
+    }
+  }
+
+  return null;
+}
+
+
 // -------------------- Hook --------------------
 export function useMagicWandTool(selectedCategory, activeImageId, options = {}) {
   const { onHistoryPush, onResetHistory } = options;
@@ -172,6 +205,8 @@ export function useMagicWandTool(selectedCategory, activeImageId, options = {}) 
   const WIDTH = 512;
   const HEIGHT = 512;
 
+  const masksRef = useRef(new Map());
+
   // ============ Load/Save via backend ============
   useImageAnnotations({
     activeImageId,
@@ -180,6 +215,7 @@ export function useMagicWandTool(selectedCategory, activeImageId, options = {}) 
     setShapesFromApi: (data) => {
       if (!data || !Array.isArray(data.annotations)) {
         reset({ regions: [], draft: null });
+        masksRef.current = new Map();
         setSelectedId(null);
         if (onResetHistory) onResetHistory();
         return;
@@ -195,6 +231,7 @@ export function useMagicWandTool(selectedCategory, activeImageId, options = {}) 
         }));
 
       reset({ regions: loaded, draft: null });
+      masksRef.current = new Map();
       setSelectedId(null);
       if (onResetHistory) onResetHistory();
     },
@@ -277,26 +314,68 @@ export function useMagicWandTool(selectedCategory, activeImageId, options = {}) 
     const newMask = await runFloodFill(p);
     if (!newMask) return;
 
+    // 1. Kijk of we moeten mergen met bestaande regio
+    const mergeTarget = findMergeTarget(
+      regions,
+      newMask,
+      WIDTH,
+      HEIGHT,
+      masksRef.current
+    );
+
+    if (mergeTarget) {
+      // merge met bestaande mask
+      const oldMask = masksRef.current.get(mergeTarget.id);
+      if (!oldMask) {
+        // safety: als er geen mask is, val terug op nieuw
+        return;
+      }
+
+      const mergedMask = mergeMasks(oldMask, newMask);
+      const poly = maskToHullPolygon(mergedMask, WIDTH, HEIGHT);
+      if (!poly) return;
+
+      pushSnapshot(present);
+      if (onHistoryPush) onHistoryPush();
+
+      masksRef.current.set(mergeTarget.id, mergedMask);
+
+      setPresent((cur) => ({
+        ...cur,
+        regions: cur.regions.map((r) =>
+          r.id === mergeTarget.id
+            ? { ...r, points: poly.normPoints }
+            : r
+        ),
+      }));
+      setSelectedId(mergeTarget.id);
+      return;
+    }
+
+    // 2. Geen merge-target gevonden → nieuwe regio
     const poly = maskToHullPolygon(newMask, WIDTH, HEIGHT);
     if (!poly) return;
 
     pushSnapshot(present);
     if (onHistoryPush) onHistoryPush();
 
+    const id = crypto?.randomUUID ? crypto.randomUUID() : String(Date.now());
+
+    masksRef.current.set(id, newMask);
+
     const region = {
-      id: crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()),
+      id,
       category: selectedCategory,
       points: poly.normPoints,
-      // als je mask later naar backend wil sturen, kun je dat hier bewaren
-      // mask: newMask,
     };
 
     setPresent((cur) => ({
       ...cur,
       regions: [...cur.regions, region],
     }));
-    setSelectedId(region.id);
+    setSelectedId(id);
   };
+
 
   // ============ Hele regio slepen ============
   const onRegionMouseDown = (e, id) => {

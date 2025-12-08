@@ -91,7 +91,7 @@ const AnnotationPage = () => {
   const [showImageDeletion, setShowImageDeletion] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const {currentUser, authType, loading} = useContext(AuthContext);
+  const {currentUser, authType, loading, logout} = useContext(AuthContext);
 
   const [dataset, setDataset] = useState(null); 
   const [imageMetas, setImageMetas] = useState([]);  // metadata from mongo
@@ -255,7 +255,9 @@ const AnnotationPage = () => {
 
   useEffect(() => {
     // elke keer als we naar een andere image/url gaan → opnieuw laden
-    setImageReady(false);
+    if (authType === "user") {
+      setImageReady(false);
+    }
   }, [selectedImageId, selectedUrl]);
 
   // get selectedDataset
@@ -345,7 +347,7 @@ const AnnotationPage = () => {
     }
   }
 
-  // fetch datasets and categorie using useEffect
+  // fetch images and categorie using useEffect
   useEffect(() => {
     if (!dataset) return;
     fetchImages();
@@ -438,27 +440,39 @@ const AnnotationPage = () => {
   }, [imageMetas, offset, authType, loading]);
 
 
-  // auto-select last viewed image (or first) per dataset
+  // auto-select last viewed image, anders eerste niet-geannoteerde (of eerste image)
   useEffect(() => {
     if (!dataset || imageMetas.length === 0) return;
 
     const key = `selectedImage:${dataset.id}`;
     const saved = localStorage.getItem(key);
 
-    // als er een opgeslagen imageId is, en die bestaat in deze dataset
+    // 1) Saved image (laatst bekeken), als die nog bestaat in deze dataset
     if (saved && imageMetas.some((img) => img.id === saved)) {
-      // alleen als we nog niets geselecteerd hebben of iets anders
       if (selectedImageId !== saved) {
         setSelectedImageId(saved);
       }
       return;
     }
 
-    // anders fallback naar de eerste image
-    if (!selectedImageId) {
-      setSelectedImageId(imageMetas[0].id);
+    // 2) Geen geldige saved: pak eerste niet-geannoteerde image
+    //    (let op: we gaan ervan uit dat backend img.is_completed meestuurt)
+    const firstNotCompleted = imageMetas.find(
+      (img) => img.is_completed === false // of !img.is_completed
+    );
+
+    const fallbackId = firstNotCompleted
+      ? firstNotCompleted.id            // eerste niet-geannoteerde
+      : imageMetas[0].id;               // alles geannoteerd → pak eerste image
+
+    // 3) Alleen overschrijven als er nog niks gekozen is of huidige id niet meer bestaat
+    if (
+      !selectedImageId ||
+      !imageMetas.some((img) => img.id === selectedImageId)
+    ) {
+      setSelectedImageId(fallbackId);
     }
-  }, [dataset, imageMetas]);
+  }, [dataset, imageMetas, selectedImageId]);
 
   const showInitialLoading =
   loading ||                       // auth nog bezig
@@ -476,6 +490,10 @@ const AnnotationPage = () => {
   const handleSaveAnnotation = async () => {
     if (!selectedImageId) return;
 
+    if (undoStackRef.current.past.length === 0) {
+      return; // niks veranderd, niks saven
+    }
+
     const hasBbox = bbox.boxes && bbox.boxes.length > 0;
     const hasPoly = poly.polygons && poly.polygons.length > 0;
     const hasEllipse = ellipse.ellipses && ellipse.ellipses.length > 0; 
@@ -485,24 +503,25 @@ const AnnotationPage = () => {
     // Geen enkele annotatie? Dan leeg wegschrijven.
     if (!hasBbox && !hasPoly && !hasEllipse && !hasStroke && !hasRegion) {
       await updateImageAnnotations_empty(selectedImageId, false);
-      return;
+      
+    } else {
+      // Alles in één keer saven
+      await updateAllImageAnnotations(
+        selectedImageId,
+        hasBbox ? bbox.boxes : [],
+        hasPoly ? poly.polygons : [],
+        hasEllipse ? ellipse.ellipses : [],
+        hasStroke ? pencil.strokes : [],
+        hasRegion ? mask.regions : [],
+        false
+      );
     }
 
-    
-    // Alles in één keer saven
-    await updateAllImageAnnotations(
-      selectedImageId,
-      hasBbox ? bbox.boxes : [],
-      hasPoly ? poly.polygons : [],
-      hasEllipse ? ellipse.ellipses : [],
-      hasStroke ? pencil.strokes : [],
-      hasRegion ? mask.regions : [],
-      false
-    );
+    undoStackRef.current.past = [];
+    undoStackRef.current.future = [];
   };
 
   
-
 
 
   // Next Image
@@ -515,7 +534,6 @@ const AnnotationPage = () => {
     if (index === -1 || index >= imageMetas.length - 1) return;
 
     
-
     const nextIndex = index + 1;
     const nextId = imageMetas[nextIndex].id;
     setSelectedImageId(nextId);
@@ -602,6 +620,17 @@ const AnnotationPage = () => {
   const handleBackClick = async () => {
     await handleSaveAnnotation();  
     navigate("/overview")
+  };
+
+  const handleLogoutClick = async () => {
+    try {
+      await handleSaveAnnotation();
+    } catch (err) { 
+      console.error("Auto save failed on logout:", err);
+    } finally {
+      logout();
+      navigate("/", { replace: true });
+    }
   };
 
 
@@ -860,7 +889,7 @@ const AnnotationPage = () => {
       className="min-h-screen flex flex-col bg-gradient-to-b from-[#44F3C9] to-[#3F7790] relative select-none"
     >
       {/* === Header === */}
-      <Header  currentUser={currentUser} onLogoClick={handleBackClick} />
+      <Header  currentUser={currentUser} onLogoClick={handleBackClick} onLogoutClick={handleLogoutClick}/>
 
       {/* === Outer container === */}
       <div className="flex flex-1 items-center justify-center px-[10px] mt-[0px] mb-[12px]">
@@ -1742,6 +1771,7 @@ const AnnotationPage = () => {
               imageId={selectedImageId}
               onClose={() => setShowImageDeletion(false)}
               onSubmit={handleImageDeleted}
+              authType={authType}
             />
           )}
 

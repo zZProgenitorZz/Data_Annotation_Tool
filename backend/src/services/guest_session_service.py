@@ -254,6 +254,7 @@ class GuestSessionService:
                     "id": image_id,
                     "datasetId": dataset_id,
                     "fileName": file.filename,
+                    "is_completed": False,
                     "width": width,
                     "height": height,
                     "fileType": file_type,
@@ -277,6 +278,7 @@ class GuestSessionService:
 
             dataset = session["datasets"][dataset_id]
             dataset["total_Images"] = dataset.get("total_Images", 0) + len(inserted_images)
+            dataset.setdefault("completed_Images", 0)
             dataset["updatedAt"] = datetime.now(timezone.utc)
 
             return inserted_images
@@ -328,7 +330,7 @@ class GuestSessionService:
 
         return deleted_count
     
-    def delete_image(self, guest_id: str, dataset_id: str, image_id: str) -> bool:
+    def delete_image(self, guest_id: str, image_id: str) -> bool:
         """
         Hard delete één image uit een specifieke dataset (guest only).
         Geeft True terug als er echt iets verwijderd is, anders False.
@@ -341,15 +343,23 @@ class GuestSessionService:
             # image bestaat niet in de sessie
             return False
 
-        # extra beveiliging: check of image wel bij deze dataset hoort
-        if img.get("datasetId") != dataset_id:
-            return False
+        # datasetId achterhalen van deze image
+        dataset_id = img.get("datasetId")
 
         # eerst annotaties van deze image weghalen
         self.delete_image_annotations(guest_id, image_id)
 
         # daarna de image zelf verwijderen
         del images_dict[image_id]
+
+        # --- total_Images updaten op de dataset ---
+        if dataset_id is not None:
+            datasets = session.get("datasets", {})
+            dataset = datasets.get(dataset_id)
+            if dataset:
+                current_total = dataset.get("total_Images", 0)
+                dataset["total_Images"] = max(0, current_total - 1)
+                dataset["updatedAt"] = datetime.now(timezone.utc)
 
         return True
 
@@ -372,7 +382,9 @@ class GuestSessionService:
             "id": annotation_id,
             "imageId": image_id
         }
-        
+         # >>> hier: checken of er annotaties zijn
+        has_annotations = len(image_annotations.annotations) > 0
+        self._set_image_completion(session, image_id, has_annotations)
      
         return annotation_id
     
@@ -390,7 +402,17 @@ class GuestSessionService:
             if ann.get("imageId") == image_id:
                 return ann
 
-        return None
+         # 2. Nog niets? Maak een lege annotatie aan
+        empty = ImageAnnotations(
+            for_remark=False,
+            imageId=image_id,
+            annotations=[],
+        )
+
+        annotation_id = self.create_image_annotations(guest_id, image_id, empty)
+
+        # 3. Haal nu de net aangemaakte annotatie uit de session terug
+        return session["annotations"][annotation_id]
         
     def update_image_annotation(
         self,
@@ -413,6 +435,9 @@ class GuestSessionService:
                     "id": ann.get("id"),
                     "imageId": image_id,
                 }
+                # >>> hier: bepalen of image nu annotaties heeft (>0)
+                has_annotations = len(updated_annotations.annotations) > 0
+                self._set_image_completion(session, image_id, has_annotations)
                 return True
 
         # niets gevonden om te updaten
@@ -422,13 +447,28 @@ class GuestSessionService:
     def delete_image_annotations(self, guest_id: str, image_id: str) -> bool:
         """Delete all annotations for an image."""
         session = self._get_session(guest_id)
-        
-        for ann_id in list(session["annotations"].keys()):
-            if session["annotations"][ann_id].get("imageId") == image_id:
-                del session["annotations"][ann_id]
-                return True
-        
-        return False
+        annotations = session.get("annotations", {})
+
+        deleted = False
+
+        # we gaan er vanuit dat er max. 1 document per imageId is
+        for ann_id, ann in list(annotations.items()):
+            if ann.get("imageId") == image_id:
+                # check of deze annotatie-lijst > 0 items had
+                ann_list = ann.get("annotations") or []
+                had_annotations = len(ann_list) > 0
+
+                del annotations[ann_id]
+                deleted = True
+
+                if had_annotations:
+                    # nu zijn er 0 annotaties, dus completion moet False
+                    self._set_image_completion(session, image_id, False)
+
+                break
+
+        return deleted
+
     
     
     # ============================================================
@@ -500,6 +540,51 @@ class GuestSessionService:
     # UTILITY METHODS
     # ============================================================
     
+    from datetime import datetime, timezone
+
+    def _set_image_completion(
+        self,
+        session: dict,
+        image_id: str,
+        has_annotations: bool,
+    ) -> None:
+        """
+        Update image.is_completed en dataset.completed_Images
+        op basis van of er annotaties zijn (has_annotations).
+        """
+        images = session.get("images", {})
+        img = images.get(image_id)
+        if not img:
+            return
+
+        old_completed = img.get("is_completed", False)
+        # als er geen verandering is, hoeven we niets te doen
+        if old_completed == has_annotations:
+            return
+
+        # image-flag updaten
+        img["is_completed"] = has_annotations
+
+        dataset_id = img.get("datasetId")
+        if not dataset_id:
+            return
+
+        datasets = session.get("datasets", {})
+        dataset = datasets.get(dataset_id)
+        if not dataset:
+            return
+
+        current_completed = dataset.get("completed_Images", 0)
+
+        if has_annotations:
+            dataset["completed_Images"] = current_completed + 1
+        else:
+            dataset["completed_Images"] = max(0, current_completed - 1)
+
+        dataset["updatedAt"] = datetime.now(timezone.utc)
+
+
+
     def clear_session(self, guest_id: str):
         """Manually clear a guest session (for testing or logout)."""
         if guest_id in self._sessions:

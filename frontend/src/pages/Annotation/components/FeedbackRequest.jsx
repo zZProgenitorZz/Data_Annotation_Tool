@@ -221,7 +221,7 @@ const FeedbackRequest = ({ annotationId, imageId, fileName, onClose, onSubmit })
               await imageFeedback(remarks);
             }}
             style={{
-              padding: "12px 60px",
+              padding: "11px 60px",
               borderRadius: "10px",
               backgroundColor: isDisabled ? "#D1D5DB" : "#B3DCD7",
               color: "#000000",

@@ -63,7 +63,11 @@ export async function updateImageAnnotations_empty(imageId, forRemark = false) {
     annotations: [],
   };
 
-  return updateImageAnnotation(imageId, payload)
+  const result = await updateImageAnnotation(imageId, payload)
+
+  setAnnotationCache(imageId, payload);
+
+  return result;
 }
 
 // Pakt ALLE annotaties (bbox + polygon) samen
@@ -129,6 +133,6 @@ export async function updateAllImageAnnotations(imageId, boxes, polygons, ellips
 
   const result = await updateImageAnnotation(imageId, payload);
 
-
   setAnnotationCache(imageId, payload);
+  return result;
 }
