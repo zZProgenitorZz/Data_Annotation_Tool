@@ -153,13 +153,13 @@ export default function UploadImages({ datasetId, onDone, type = "both" }) {
 
       {error && <div className="text-red-600 text-sm">{error}</div>}
 
-      <div className="space-y-1">
+      {/* <div className="space-y-1">
         {files.map((f, idx) => (
           <div key={idx} className="text-sm">
             {f.webkitRelativePath || f.name}
           </div>
         ))}
-      </div>
+      </div> */}
     </div>
   );
 }

@@ -108,6 +108,8 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
     currentUser && 
     localData?.createdBy && 
     localData.createdBy === currentUser.id;
+
+  const isAdmin = currentUser.role === "admin";
   
   
 
@@ -118,7 +120,7 @@ const Row = ({ label, name, type = "text", truncate = false, italic = false, loc
     localData.assignedTo.map(extractUserId).includes(String(currentUser.id));
 
   const canEditThisRow =
-    editMode && !nonEditable && (isOwner || isAssigned);
+    editMode && !nonEditable && (isOwner || isAssigned || isAdmin);
 
 
   if (canEditThisRow) {
@@ -441,13 +443,15 @@ const DatasetWithRef = ({ dataset, editMode, localDataRef, users }) => {
     localData?.createdBy &&
     localData.createdBy === currentUser.id;
 
+  const isAdmin = currentUser.role === "admin";
+
   const isAssigned =
     !loading &&
     currentUser &&
     Array.isArray(localData?.assignedTo) &&
     localData.assignedTo.map((entry) => extractUserId(entry)).includes(String(currentUser.id));
 
-    const canStart = isOwner || isAssigned;
+    const canStart = isOwner || isAssigned || isAdmin;
 
  
   const toggleDataset = () => setIsExpanded((s) => !s);
@@ -511,7 +515,7 @@ const DatasetWithRef = ({ dataset, editMode, localDataRef, users }) => {
               {/* MIDDEN knop */}
               <button
                 onClick={goToExport} // vervang met jouw eigen functie
-                className="px-[10px] py-[4px] bg-[#FFF900] text-[14px] rounded-[8px] hover:bg-[#BAB422] transition"
+                className="px-[10px] py-[4px] bg-[#00D1B2] text-[14px] rounded-[8px] hover:bg-[#00A38D] transition"
               >
                 Export
               </button>
