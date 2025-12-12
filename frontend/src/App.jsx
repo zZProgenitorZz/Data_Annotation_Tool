@@ -13,6 +13,8 @@ import AdminSettings from "./pages/Admin/AdminSettings.jsx";
 import DatasetManagement from "./pages/Admin/DatasetManagement.jsx";
 import UserManagement from "./pages/Admin/UserManagement.jsx";
 import CreatePassword from "./pages/Login/CreatePassword.jsx";
+import CheckEmail from "./pages/Login/CheckEmail.jsx";
+import PasswordChanged from "./pages/Login/PasswordChanged.jsx";
 
 function App() {
  
@@ -27,6 +29,8 @@ function App() {
           <Route path="/annotation" element={<RequireAuth><AnnotationPage/></RequireAuth>}/>
 
           <Route path="/set-password" element={<PublicOnlyRoute><CreatePassword/></PublicOnlyRoute>}/>
+          <Route path="/reset-password" element={<PublicOnlyRoute><CheckEmail/></PublicOnlyRoute>}/>
+          <Route path="/password-changed" element={<PublicOnlyRoute><PasswordChanged/></PublicOnlyRoute>}/>
 
           <Route path="/admin" element={<RequireAuth><AdminLayout><AdminDashboard /></AdminLayout></RequireAuth>}/>
           <Route path="/admin/datasets"element={<RequireAuth><AdminLayout><DatasetManagement /></AdminLayout></RequireAuth> }/>

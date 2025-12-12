@@ -79,3 +79,8 @@ class UserRepo:
             return None
         return User(**doc)
 
+    async def get_user_by_reset_token(self, token: str) -> Optional[User]:
+        doc = await self.collection.find_one({"reset_token": token})
+        if not doc:
+            return None
+        return User(**doc)

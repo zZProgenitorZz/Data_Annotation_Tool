@@ -72,3 +72,14 @@ export async function completeInvite (payload) {
   const response = await api.post("/user/complete-invite", payload)
   return response.data;
 }
+
+export async function completePasswordReset(payload) {
+  const response = await api.post("/user/complete-reset", payload);
+  return response.data;
+}
+
+
+export async function requestPasswordReset(payload) {
+  const response = await api.post("/user/request-reset", payload);
+  return response.data;
+}

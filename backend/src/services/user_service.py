@@ -1,5 +1,5 @@
 from backend.src.repositories.user_repo import UserRepo
-from backend.src.models.user import User, UserUpdate, UserDto, InviteUserDto, CompleteInviteDto
+from backend.src.models.user import User, UserUpdate, UserDto, InviteUserDto, CompleteInviteDto, ResetPasswordRequestDto
 from backend.src.services.log_service import LogService
 from backend.src.helpers.helpers import NotFoundError
 from fastapi import Depends, HTTPException, status, Security
@@ -399,10 +399,95 @@ class UserService:
 
         return True
     
+    async def request_password_reset(self, req: ResetPasswordRequestDto) -> bool:
+        # 1) User op email
+        user = await self.user_repo.get_user_by_username_or_email(req.email)
 
+        # SECURITY (aanrader):
+        # Doe alsof het altijd gelukt is, zodat je geen account existence lekt.
+        if not user:
+            return True
+
+        # 2) Token + expiry
+        token = secrets.token_urlsafe(32)
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=2)  # reset meestal korter dan invite
+
+        # 3) Save token
+        await self.user_repo.update_user(
+            str(user.id),
+            {
+                "reset_token": token,
+                "reset_expires_at": expires_at,
+            },
+        )
+
+        # 4) Link (double slash fix)
+        frontend = settings.frontend_base_url.rstrip("/")
+        reset_link = f"{frontend}/reset-password?token={token}"
+
+        # 5) Mail
+        subject = "Reset your AiDx Annotation Tool password"
+        body = f"""
+        Hi {user.username or "there"},
+
+        We received a request to reset your password.
+
+        Click the link below to set a new password (valid for 2 hours):
+
+        {reset_link}
+
+        If you didn't request this, you can ignore this email.
+
+        Best regards,
+        AiDx Annotation Tool
+        """
+        send_email_via_mailgun(user.email, subject, body)
+
+        # 6) Log
+        # if current_user:
+        #     await self.log.log_action(
+        #         user_id=current_user.id,
+        #         action="REQUESTED_PASSWORD_RESET",
+        #         target=user.username or user.email,
+        #         details={"target_user_id": str(user.id)},
+        #     )
+
+        return True
 
   
+    async def completePasswordReset(self, dto: CompleteInviteDto) -> bool:
+      
+        user = await self.user_repo.get_user_by_reset_token(dto.token)
+        if not user:
+            raise HTTPException(status_code=400, detail="Reset or used Reset token")
+        
+       
+        now = datetime.now(timezone.utc)
+        exp = user.reset_expires_at
 
+        # als exp naive is, behandel het als UTC (mits je het ook zo opslaat!)
+        if exp is not None and exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+
+
+        if not exp or exp < now:
+            raise HTTPException(status_code=400, detail="Reset token expired")
+       
+        
+
+        hashed = self.user_login.get_password_hash(dto.password)
+
+        updated = {
+            "hashed_password": hashed,
+            "reset_token": None,
+            "reset_expires_at": None,
+        }
+
+        success = await self.user_repo.update_user(str(user.id), updated)
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to set password")
+
+        return True
 
 
     async def complete_invite(self, dto: CompleteInviteDto) -> bool:

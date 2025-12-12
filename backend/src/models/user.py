@@ -15,6 +15,9 @@ class UserDto(BaseModel):
     invite_token: str | None = None
     invite_expires_at: datetime | None = None
 
+    reset_token: str | None = None
+    reset_expires_at: datetime | None = None
+
 class User(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
     username: str
@@ -25,6 +28,9 @@ class User(BaseModel):
 
     invite_token: str | None = None
     invite_expires_at: datetime | None = None
+
+    reset_token: str | None = None
+    reset_expires_at: datetime | None = None
 
     class Config:
         populate_by_name = True
@@ -41,6 +47,9 @@ class UserUpdate(BaseModel):
 
     invite_token: str | None = None
     invite_expires_at: datetime | None = None
+
+    reset_token: str | None = None
+    reset_expires_at: datetime | None = None
 
     
 
@@ -61,3 +70,7 @@ class InviteUserDto(BaseModel):
 class CompleteInviteDto(BaseModel):
     token: str
     password: str
+
+
+class ResetPasswordRequestDto(BaseModel):
+    email: EmailStr
