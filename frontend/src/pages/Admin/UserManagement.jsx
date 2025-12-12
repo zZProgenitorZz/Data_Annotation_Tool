@@ -1,24 +1,13 @@
 import { useState, useEffect } from "react";
 import addUserIcon from "../../assets/admin/add-user.png";
+import { getAllUsers, deleteUser, inviteUser} from "../../services/authService";
+import Toast from "../Annotation/components/Toast";
+
 
 export default function UserManagement() {
-  const [users, setUsers] = useState([
-    {
-      id: 1,
-      username: "anthony",
-      email: "anthony@gmail.com",
-      credentialsSent: true,
-    },
-    {
-      id: 2,
-      username: "john",
-      email: "john@gmail.com",
-      credentialsSent: true,
-    },
-  ]);
-
-  const [editingUserId, setEditingUserId] = useState(null);
-  const [tempUsername, setTempUsername] = useState("");
+  const [users, setUsers] = useState([]);
+  const [reload, setReload] = useState(null)
+ 
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -27,9 +16,33 @@ export default function UserManagement() {
   // For add user modal
   const [newUsername, setNewUsername] = useState("");
   const [newEmail, setNewEmail] = useState("");
+  const [inviteError, setInviteError] = useState("");
+  const [inviteSuccess, setInviteSuccess] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  const [sendingId, setSendingId] = useState(null);
 
   // For delete modal
   const [userToDelete, setUserToDelete] = useState(null);
+
+  // Toast
+  const [toast, setToast] = useState({message :"", type: "success"});
+
+   // Users ophalen uit backend
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const result = await getAllUsers();
+        
+        setUsers(result || []);
+      } catch (err) {
+        console.error("Failed to fetch users:", err);
+        setUsers([]);
+      }
+    };
+
+    fetchUsers();
+  }, [userToDelete, reload]);
+
 
   // Disable scroll when modals open
   useEffect(() => {
@@ -41,25 +54,6 @@ export default function UserManagement() {
     };
   }, [showAddModal, showDeleteModal]);
 
-  // Edit user
-  function handleEditUser(user) {
-    setEditingUserId(user.id);
-    setTempUsername(user.username);
-  }
-
-  function handleCancelEdit() {
-    setEditingUserId(null);
-    setTempUsername("");
-  }
-
-  function handleSave(id) {
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === id ? { ...u, username: tempUsername.trim() } : u
-      )
-    );
-    setEditingUserId(null);
-  }
 
   // Delete modal open
   function handleDeleteUser(user) {
@@ -68,15 +62,43 @@ export default function UserManagement() {
   }
 
   // Confirm delete
-  function confirmDeleteUser() {
+  const confirmDeleteUser = async () => {
     if (!userToDelete) return;
-    setUsers((prev) => prev.filter((u) => u.id !== userToDelete.id));
-    setShowDeleteModal(false);
-    setUserToDelete(null);
+    try{
+      const result = await deleteUser(userToDelete.id)
+      if (result) {console.log("Succesvol verwijderd")}
+      setShowDeleteModal(false);
+      setUserToDelete(null);
+    } catch (err) {
+      console.error("Failed tot delete user", err)
+    } 
   }
 
-  function handleSendCredentials(id) {
-    console.log("Send credentials:", id);
+  const handleSendCredentials = async (username, email, id) => {
+    console.log("Send credentials:", email);
+    setSendingId(id);
+
+    const newUser = {
+      username: username.trim(),
+      email: email.trim(),
+    };
+
+    try {
+      await inviteUser(newUser)
+
+    } catch (err) {
+      console.error("Failed to send Credentials", err)
+      setToast({
+        message:"Failed to send Credentials",
+        type: "error"
+      })
+    } finally{
+      setSendingId(null);
+      setToast({
+        message:"Credentials sent",
+        type: "success"
+      })
+    }
   }
 
   // Add User
@@ -84,28 +106,59 @@ export default function UserManagement() {
     setShowAddModal(true);
     setNewUsername("");
     setNewEmail("");
+    setInviteError("");
+    setInviteSuccess(false);
+    setInviting(false);
   }
 
   function closeAddModal() {
     setShowAddModal(false);
+    setInviteError("");
+    setInviteSuccess(false);
+    setInviting(false);
   }
 
-  function handleAddUser() {
+  const handleAddUser = async () => {
     if (!newUsername.trim() || !newEmail.trim()) return;
 
+    setInviteError("");
+    setInviteSuccess(false);
+    setInviting(true)
+
     const newUser = {
-      id: Date.now(),
       username: newUsername.trim(),
       email: newEmail.trim(),
-      credentialsSent: false,
     };
 
-    setUsers((prev) => [...prev, newUser]);
-    setShowAddModal(false);
-  }
+    try{
+      await inviteUser(newUser)
+
+      setInviteSuccess(true);
+      setReload(newUser);
+
+      setTimeout(() => {
+        setShowAddModal(false);
+      }, 600);
+    } catch (err) {
+      console.error("Invite user failed:", err);
+      
+      const msg =
+      "Failed to invite user. Check if email is valid."
+
+      setInviteError(msg);
+      setInviteSuccess(false);
+    } finally {
+      setInviting(false);
+      setToast({
+        message:"Credentials sent",
+        type: "success"
+      })
+    }
+
+  };
 
   const isAddDisabled =
-    newUsername.trim().length === 0 || newEmail.trim().length === 0;
+    inviting || newUsername.trim().length === 0 || newEmail.trim().length === 0;
 
 
   return (
@@ -144,102 +197,77 @@ export default function UserManagement() {
             <div className="w-[310px]">E-mail</div>
             <div className="w-[180px]">Credentials</div>
             <div className="w-[160px]">Actions</div>
+            <div className="w-[90px] flex justify-center">Activated</div>
           </div>
 
           {/* Rows */}
-          {users.map((user) => (
-            <div
-              key={user.id}
-              className="flex border-b border-[#D6D6D6]"
-              style={{
-                backgroundColor: "#F2F2F2",
-                height: "40px",
-                alignItems: "center",
-                paddingLeft: "20px",
-                fontSize: "15px",
-              }}
-            >
-              {/* Username */}
-              <div className="w-[240px] flex items-center">
-                {editingUserId === user.id ? (
-                  <input
-                    value={tempUsername}
-                    onChange={(e) => setTempUsername(e.target.value)}
-                    style={{
-                      width: "200px",
-                      height: "26px",
-                      border: "1px solid #D1D5DB",
-                      borderRadius: "6px",
-                      paddingLeft: "6px",
-                      fontSize: "15px",
-                    }}
-                  />
-                ) : (
+          {users
+            .filter((u) => u.role !== "admin")
+            .map((user) => (
+              <div
+                key={user.id}
+                className="flex border-b border-[#D6D6D6]"
+                style={{
+                  backgroundColor: "#F2F2F2",
+                  height: "40px",
+                  alignItems: "center",
+                  paddingLeft: "20px",
+                  fontSize: "15px",
+                }}
+              >
+                <div className="w-[240px] flex items-center">
                   <span className="truncate">{user.username}</span>
-                )}
-              </div>
+                </div>
 
-              {/* Email */}
-              <div className="w-[310px] flex items-center">
-                <span className="truncate" title={user.email}>
-                  {user.email}
-                </span>
-              </div>
+                <div className="w-[310px] flex items-center">
+                  <span className="truncate" title={user.email}>
+                    {user.email}
+                  </span>
+                </div>
 
-              {/* Credentials */}
-              <div className="w-[180px] flex items-center">
-                <button
-                  onClick={() => handleSendCredentials(user.id)}
-                  className="hover:underline cursor-pointer"
-                  style={{
-                    background: "none",
-                    border: "none",
-                    fontSize: "15px",
-                    fontStyle: "italic",
-                  }}
-                >
-                  Send
-                </button>
-              </div>
+                <div className="w-[180px] flex items-center">
+                  <button
+                    onClick={() => handleSendCredentials(user.username, user.email, user.id)}
+                    className="hover:underline cursor-pointer"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      fontSize: "15px",
+                      fontStyle: "italic",
+                    }}
+                  >
+                    {sendingId === user.id ? "Sending..." : "Send"}
+                  </button>
+                </div>
 
-              {/* Actions */}
-              <div className="w-[160px] flex items-center">
-                {editingUserId === user.id ? (
-                  <>
-                    <button
-                      onClick={() => handleSave(user.id)}
-                      className="mr-[8px] hover:underline cursor-pointer"
-                    >
-                      Save
-                    </button>
-                    <span>|</span>
-                    <button
-                      onClick={handleCancelEdit}
-                      className="ml-[8px] hover:underline cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      onClick={() => handleEditUser(user)}
-                      className="mr-[8px] hover:underline cursor-pointer"
-                    >
-                      Edit
-                    </button>
-                    <span>|</span>
-                    <button
-                      onClick={() => handleDeleteUser(user)}
-                      className="ml-[8px] hover:underline cursor-pointer"
-                    >
-                      Delete
-                    </button>
-                  </>
-                )}
+                <div className="w-[160px] flex items-center">
+                  <button
+                    onClick={() => handleDeleteUser(user)}
+                    className="ml-[2px] hover:underline cursor-pointer"
+                  >
+                    Delete
+                  </button>
+                </div>
+
+                {/* Activated cell - exact same width as header */}
+                <div className="w-[90px] flex items-center justify-center">
+                  <span
+                    style={{
+                      display: "inline-block",
+                      width: "14px",
+                      height: "14px",
+                      borderRadius: "9999px",
+                      backgroundColor: !user.disabled ? "#22c55e" : "#d1d5db",
+                      border: `1px solid ${!user.disabled ? "#16a34a" : "#6b7280"}`,
+                      verticalAlign: "middle",
+                    }}
+                    title={!user.disabled ? "Activated" : "Not activated"}
+                    aria-label={!user.disabled ? "Activated" : "Not activated"}
+                  />
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+
         </div>
       </div>
 
@@ -349,7 +377,17 @@ export default function UserManagement() {
                   }}
                 />
               </div>
+
+               <p
+              className="text-[14px] h-[2px] text-center mt-[-6px] mb-[10px]"
+              style={{ color: inviteSuccess ? "#2E9B63" : "#FF4D4D" }}
+            >
+              {inviteSuccess ? "Invite sent. Redirecting..." : (inviteError || "")}
+            </p>
+
             </div>
+
+           
 
             <div
               style={{
@@ -400,7 +438,7 @@ export default function UserManagement() {
                   opacity: isAddDisabled ? 0.6 : 1,
                 }}
               >
-                Add User
+                {inviting ? "Sending..." : "Add User"}
               </button>
             </div>
           </div>
@@ -498,6 +536,14 @@ export default function UserManagement() {
           </div>
         </>
       )}
+
+      {toast.message && (
+            <Toast
+              message={toast.message}
+              type={toast.type}
+              onClose={() => setToast({message: "", type: "success"})}
+            />
+          )}
     </div>
   );
 }

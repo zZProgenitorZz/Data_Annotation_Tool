@@ -40,6 +40,11 @@ export async function createUser(user) {
     return response.data;
 }
 
+export async function deleteUser(userId) {
+  const response = await api.delete(`/user/${userId}`);
+  return response.data;
+}
+
 // Guest Login: POST /guest-login
 export async function guestLogin() {
   const response = await api.post("/guest/guest-login");
@@ -55,4 +60,15 @@ export async function getGuestInfo() {
   const response = await api.get("/guest/me");
   return response.data
   
+}
+
+
+export async function inviteUser (invite) {
+  const response = await api.post("/user/invite", invite);
+  return response.data;
+}
+
+export async function completeInvite (payload) {
+  const response = await api.post("/user/complete-invite", payload)
+  return response.data;
 }

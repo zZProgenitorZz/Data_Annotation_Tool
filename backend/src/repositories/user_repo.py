@@ -2,6 +2,7 @@
 from backend.src.models.user import User
 from backend.src.helpers.helpers import PyObjectId
 from backend.core.db import db
+from typing import Optional
 
 
 class UserRepo:
@@ -70,4 +71,11 @@ class UserRepo:
     async def update_user(self, user_id: str, updated_user: dict) -> bool:
         result = await self.collection.update_one({"_id": PyObjectId(user_id)}, {"$set": updated_user})    
         return result.modified_count > 0
+
+
+    async def get_user_by_invite_token(self, token: str) -> Optional[User]:
+        doc = await self.collection.find_one({"invite_token": token})
+        if not doc:
+            return None
+        return User(**doc)
 

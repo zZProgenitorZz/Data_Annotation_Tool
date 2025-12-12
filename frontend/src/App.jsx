@@ -12,6 +12,7 @@ import AdminLayout from "./pages/Admin/AdminLayout.jsx";
 import AdminSettings from "./pages/Admin/AdminSettings.jsx";
 import DatasetManagement from "./pages/Admin/DatasetManagement.jsx";
 import UserManagement from "./pages/Admin/UserManagement.jsx";
+import CreatePassword from "./pages/Login/CreatePassword.jsx";
 
 function App() {
  
@@ -24,6 +25,8 @@ function App() {
           <Route path="/overview" element={<RequireAuth> <Overview /> </RequireAuth>} />
           <Route path="/imageList" element={<RequireAuth><ImageList/></RequireAuth>}/>
           <Route path="/annotation" element={<RequireAuth><AnnotationPage/></RequireAuth>}/>
+
+          <Route path="/set-password" element={<PublicOnlyRoute><CreatePassword/></PublicOnlyRoute>}/>
 
           <Route path="/admin" element={<RequireAuth><AdminLayout><AdminDashboard /></AdminLayout></RequireAuth>}/>
           <Route path="/admin/datasets"element={<RequireAuth><AdminLayout><DatasetManagement /></AdminLayout></RequireAuth> }/>

@@ -23,12 +23,16 @@ import {
 import { deleteDatasetLabel } from "../../services/labelService";
 import { parseAssignedTo } from "../../utils/utils";
 import { AuthContext } from "../../components/AuthContext";
+import Toast from "../Annotation/components/Toast.jsx";
 
 export default function DatasetManagement() {
   const [datasets, setDatasets] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
 
   const { authType, loading } = useContext(AuthContext);
+  
+  // Toast
+  const [toast, setToast] = useState({message :"", type: "success"});
 
   // User List Modal
   const [userListModal, setUserListModal] = useState({
@@ -272,8 +276,16 @@ export default function DatasetManagement() {
       setDatasets((prev) => prev.filter((d) => d.id !== id));
     } catch (err) {
       console.error("Error deleting dataset:", err);
+      setToast({
+        message:"Failed deleting dataset",
+        type: "error"
+      })
     } finally {
       closeDeleteModal();
+      setToast({
+        message:"Deleted dataset",
+        type: "success"
+      })
     }
   }
 
@@ -300,6 +312,15 @@ export default function DatasetManagement() {
       setUploadOpen(false);
     } catch (error) {
       console.error("Error saving dataset (or uploading images):", error);
+      setToast({
+        message: `Failed uploading dataset: ${dataset.name}`,
+        type: "error"
+      })
+    } finally {
+      setToast({
+        message: `Uploaded dataset: ${dataset.name}`,
+        type: "success"
+      })
     }
   };
 
@@ -710,7 +731,18 @@ export default function DatasetManagement() {
           authType={authType}
           onClose={() => setExportDataset(null)}
         />
+        
       )}
+
+      {toast.message && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast({message: "", type: "success"})}
+        />
+      )}
+
+
     </div>
   );
 }
