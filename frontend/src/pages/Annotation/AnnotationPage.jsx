@@ -441,38 +441,34 @@ const AnnotationPage = () => {
 
 
   // auto-select last viewed image, anders eerste niet-geannoteerde (of eerste image)
+  // + zet offset naar de juiste "page" (LIMIT=50)
   useEffect(() => {
     if (!dataset || imageMetas.length === 0) return;
 
     const key = `selectedImage:${dataset.id}`;
     const saved = localStorage.getItem(key);
 
-    // 1) Saved image (laatst bekeken), als die nog bestaat in deze dataset
+    // 1) Bepaal targetId (saved -> fallback)
+    let targetId = null;
+
     if (saved && imageMetas.some((img) => img.id === saved)) {
-      if (selectedImageId !== saved) {
-        setSelectedImageId(saved);
-      }
-      return;
+      targetId = saved;
+    } else {
+      const firstNotCompleted = imageMetas.find((img) => img.is_completed === false);
+      targetId = (firstNotCompleted ? firstNotCompleted.id : imageMetas[0].id);
     }
 
-    // 2) Geen geldige saved: pak eerste niet-geannoteerde image
-    //    (let op: we gaan ervan uit dat backend img.is_completed meestuurt)
-    const firstNotCompleted = imageMetas.find(
-      (img) => img.is_completed === false // of !img.is_completed
-    );
-
-    const fallbackId = firstNotCompleted
-      ? firstNotCompleted.id            // eerste niet-geannoteerde
-      : imageMetas[0].id;               // alles geannoteerd → pak eerste image
-
-    // 3) Alleen overschrijven als er nog niks gekozen is of huidige id niet meer bestaat
-    if (
-      !selectedImageId ||
-      !imageMetas.some((img) => img.id === selectedImageId)
-    ) {
-      setSelectedImageId(fallbackId);
+    // 2) Zet offset naar de pagina waar targetId in zit
+    const idx = imageMetas.findIndex((img) => img.id === targetId);
+    if (idx !== -1) {
+      const pageOffset = Math.floor(idx / LIMIT) * LIMIT;
+      setOffset((prev) => (prev === pageOffset ? prev : pageOffset));
     }
-  }, [dataset, imageMetas, selectedImageId]);
+
+    // 3) Zet selectedImageId alleen als nodig
+    setSelectedImageId((prev) => (prev === targetId ? prev : targetId));
+  }, [dataset?.id, imageMetas]); // bewust GEEN selectedImageId (voorkomt rerun/loops)
+
 
   const showInitialLoading =
   loading ||                       // auth nog bezig
@@ -1542,6 +1538,11 @@ const AnnotationPage = () => {
                           if (img.id === selectedImageId) return;
                           handleSaveAnnotation();
                           setSelectedImageId(img.id);
+                          const idx = imageMetas.findIndex((x) => x.id === img.id);
+                          if (idx !== -1) {
+                            const pageOffset = Math.floor(idx / LIMIT) * LIMIT;
+                            if (pageOffset !== offset) setOffset(pageOffset);
+                          }
                         }}
                         style={{
                           height: `${ROW_H}px`,
