@@ -28,6 +28,3 @@ db = client[db_name]
 
 
 
-# progen_db_user                            TEItFpFuRNAmcNEL
-
-# mongodb+srv://progen_db_user:TEItFpFuRNAmcNEL@aidxmedical.29wm2cq.mongodb.net/?appName=AiDxMedical
