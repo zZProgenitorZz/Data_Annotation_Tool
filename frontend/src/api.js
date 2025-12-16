@@ -16,9 +16,28 @@ api.interceptors.request.use((config) => {
         config.headers.Authorization = `Bearer ${token}`;
   
       }
-    
-
     return config;
-});
+    },
+  (error) => Promise.reject(error)
+);
+
+// 401-afhandeling
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // Kijk of er echt een response is
+    if (error.response && error.response.status === 401) {
+      // Token is ongeldig / verlopen → schoonmaken
+      sessionStorage.removeItem("access_token");
+      sessionStorage.removeItem("auth_kind");
+
+      // Harde redirect naar loginpagina
+      window.location.href = "/";
+    }
+
+    // Zorg dat je error nog steeds verder kunt afhandelen als je wilt
+    return Promise.reject(error);
+  }
+);
 
 export default api

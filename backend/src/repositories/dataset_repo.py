@@ -44,4 +44,22 @@ class DatasetRepo:
         result = await self.collection.update_one({"_id": PyObjectId(dataset_id)}, {"$set": updated_data})
 
         return result.modified_count > 0
+    
+    async def update_dataset_state(self, dataset_id: str, delta_completed: int) -> bool:
+        dataset = await self.get_dataset_by_id(dataset_id)
+        if not dataset:
+            return False
+
+        new_completed_count = (dataset.completed_Images or 0) + delta_completed
+        if new_completed_count < 0:
+            new_completed_count = 0
+
+        updated_data = {
+            "completed_Images": new_completed_count
+        }
+        print(new_completed_count)
+        
+
+        result = await self.collection.update_one({"_id": PyObjectId(dataset_id)}, {"$set": updated_data})
+        return result.modified_count > 0
 

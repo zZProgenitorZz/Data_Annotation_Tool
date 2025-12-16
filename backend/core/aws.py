@@ -1,5 +1,6 @@
 import os, boto3
 from dotenv import load_dotenv, find_dotenv
+from backend.config import settings
 
 # Option A: auto-find the first .env upward from this file
 load_dotenv(find_dotenv())

@@ -11,12 +11,14 @@ from backend.src.services.guest_session_service import guest_session_service
 from pydantic import BaseModel, Field, ConfigDict
 from backend.src.repositories.Image_metadata_repo import ImageMetadataRepo
 
+
 router = APIRouter()
 
 
 image_service = ImageService()
 metadata_service = MetadataService()
 image_repo = ImageMetadataRepo()
+
 
 class PresignFile(BaseModel):
     filename: str
@@ -86,9 +88,11 @@ async def soft_delete_images(
     try:
         if is_guest_user(current_user):
             # guest: ook alle images van dataset soft-deleten
+
             return guest_session_service.delete_images(current_user.id, dataset_id)
 
         # admin/user: alle images van dataset soft-delete
+     
         return await metadata_service.soft_delete_images(dataset_id, current_user)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))

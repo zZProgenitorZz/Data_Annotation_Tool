@@ -8,6 +8,7 @@ class ImageMetadata(BaseModel):
     datasetId: Optional[str] = None
     fileName: str
     folderPath: Optional[str] = None # kept folderPath for if i plan a mixed/legacy mode
+    is_completed: Optional[bool] = False
 
     width: int
     height: int
@@ -40,6 +41,9 @@ class ImageMetadataDto(BaseModel):
     datasetId: Optional[str] = None
     fileName: str
     folderPath: Optional[str] = None
+    is_completed: Optional[bool] = False
+
+
     width: int
     height: int
     fileType: str

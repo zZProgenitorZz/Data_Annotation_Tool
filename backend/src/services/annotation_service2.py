@@ -3,11 +3,16 @@ from backend.src.repositories.annotation_repo2 import ImageAnnotationsRepo
 from backend.src.helpers.helpers import NotFoundError, ValidationError
 from typing import List
 from backend.src.models.user import UserDto
+from backend.src.repositories.Image_metadata_repo import ImageMetadataRepo
+from backend.src.repositories.dataset_repo import DatasetRepo
 
 
 class ImageAnnotationsService:
     def __init__(self):
         self.repo = ImageAnnotationsRepo()
+        self.image_repo = ImageMetadataRepo()
+        self.dataset_repo = DatasetRepo()
+        
 
    
 
@@ -25,14 +30,38 @@ class ImageAnnotationsService:
     async def update_image_annotation(self, image_id: str, updated_image_annotation: ImageAnnotations, current_user: UserDto | None = None) -> bool:
         updated_data = updated_image_annotation.model_dump(exclude_unset=True, )
         updated_data.pop("id", None)
-        
-       
+
+
+
+        # Update the image annotation
         image_annotation = await self.repo.update_image_annotation(image_id, updated_data)
         if not image_annotation:
             raise NotFoundError(f"Image annotation with id {image_id} not found")
         
-        return image_annotation
+        # Decide if there are annotations present
+        has_annotations = len(updated_image_annotation.annotations) > 0
         
+        image = await self.image_repo.get_image_state(image_id)
+
+
+        old_completed = bool(image.get("is_completed", False))
+        new_completed = has_annotations
+
+        if old_completed != new_completed:
+            # Update the is_completed field in image metadata
+            await self.image_repo.update_image_metadata(
+                image_id,
+                {"is_completed": new_completed}
+            )
+
+            delta = 1 if new_completed else -1
+            await self.dataset_repo.update_dataset_state(dataset_id=str(image.get("datasetId")), delta_completed=delta)
+        
+        return image_annotation
+
+        
+        
+    
 
     # # Get all ImageAnnotations documents
     # async def get_all_image_annotations(self, current_user: UserDto | None = None) -> List[ImageAnnotationsDto]:

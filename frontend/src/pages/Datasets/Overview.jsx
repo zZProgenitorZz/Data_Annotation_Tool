@@ -43,6 +43,10 @@ const Overview = () => {
   const [selectedDatasets, setSelectedDatasets] = useState([]);
   const [assignedUsers, setAssignedUsers] = useState([])
   const { currentUser, authType, loading} = useContext(AuthContext)
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState("");
+  const [uploadPct, setUploadPct] = useState(0);
+
 
 
   //ref to store dataset components
@@ -188,42 +192,59 @@ const Overview = () => {
 
   const handleSaveDataset = async ({ dataset, files }) => {
     try {
-      // 1) dataset aanmaken in backend
-      
-      const created = await createDataset(dataset);
-      
-      const datasetId = created;
-     
+      setIsUploading(true);
+      setUploadMsg("Creating dataset...");
+      setUploadPct(0);
 
-      if (!loading && authType === "user") {
-        // 2) images uploaden naar S3 met helper (alleen als er files zijn)
-        if (files && files.length && datasetId) {
+      const datasetId = await createDataset(dataset);
+
+      if (files && files.length && datasetId) {
+        // USER upload (S3) -> echte progress
+        if (!loading && authType === "user") {
+          setUploadMsg(`Uploading images (0/${files.length})...`);
+
+          const perFilePct = {}; // imageId -> pct
+
           await uploadImagesToS3({
             datasetId,
             files,
             onProgress: ({ imageId, pct }) => {
-              console.log("upload", imageId, pct, "%");
+              perFilePct[imageId] = pct;
+
+              const vals = Object.values(perFilePct);
+              const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+              setUploadPct(Math.round(avg));
+
+              const done = vals.filter((v) => v >= 100).length;
+              setUploadMsg(`Uploading images (${done}/${files.length})...`);
             },
           });
         }
-      }
 
-      if (!loading && authType === "guest") {
-        if (files && files.length && datasetId) {
+        // GUEST upload -> geen progress events, maar wél “busy” feedback
+        if (!loading && authType === "guest") {
+          setUploadMsg(`Uploading ${files.length} images...`);
           await uploadGuestImages(datasetId, files);
+          setUploadPct(100);
         }
       }
-      
-      // 3) Datasets opnieuw ophalen (i.p.v. window.location.reload)
+
+      setUploadMsg("Refreshing datasets...");
       await fetchDatasets();
 
-      // 4) Modal sluiten
       setIsUploadOpen(false);
     } catch (error) {
       console.error("Error saving dataset (or uploading images):", error);
-      // hier zou je evt. een error state/toast kunnen zetten
+      setUploadMsg("Upload failed. Check console.");
+    } finally {
+      setIsUploading(false);
+      setTimeout(() => {
+        setUploadMsg("");
+        setUploadPct(0);
+      }, 800);
     }
   };
+
 
    
 
@@ -368,6 +389,9 @@ const Overview = () => {
         onClose={() => setIsUploadOpen(false)}
         users={assignedUsers}
         onSave={handleSaveDataset}
+        isUploading={isUploading}
+        uploadMsg={uploadMsg}
+        uploadPct={uploadPct}
       />
     </div>
   );

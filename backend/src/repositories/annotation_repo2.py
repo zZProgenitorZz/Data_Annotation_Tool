@@ -5,7 +5,7 @@ from typing import List
 
 class ImageAnnotationsRepo:
     def __init__(self):
-        self.collection = db["image_annotations"]  # Collection voor images met embedded annotations
+        self.collection = db["imageAnnotations"]  # Collection voor images met embedded annotations
 
     # Create a new image with annotations
     async def create_image_annotations(self, image_annotations: dict) -> str:

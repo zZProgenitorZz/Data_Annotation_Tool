@@ -15,7 +15,7 @@ const REASONS = [
   "Not relevant to the project",
 ];
 
-const ImageDeletion = ({ imageId, onClose, onSubmit }) => {
+const ImageDeletion = ({ imageId, onClose, onSubmit, authType}) => {
   // saves which reason was selected (string)
   const [selected, setSelected] = useState("");
 
@@ -56,7 +56,7 @@ const ImageDeletion = ({ imageId, onClose, onSubmit }) => {
 
 
   const canDelete =
-    selected && (isOther ? otherText.trim().length > 0 : true);
+    selected && (isOther ? otherText.trim().length > 0 : true) || authType === "guest";
 
 
   const imageDelete = async (finalReason) => {
@@ -93,6 +93,28 @@ const ImageDeletion = ({ imageId, onClose, onSubmit }) => {
         onClose();
       }
     };
+  const imageDeleteforGuest = async (finalReason) => {
+    
+
+    const stored = JSON.parse(localStorage.getItem("selectedDataset"));
+    if (!stored || !stored.id) {
+      console.error("No selectedDataset in localStorage");
+      return;
+    }
+
+    // image soft-deleten (LET OP: datasetId + imageId)
+    await softDeleteImage(imageId);
+
+    //  parent vertellen wat er is gebeurd
+    if (onSubmit) {
+      onSubmit(finalReason, imageId);
+    }
+
+    // 4. popup sluiten
+    if (onClose) {
+      onClose();
+    }
+  };
 
   return (
     <div
@@ -136,82 +158,93 @@ const ImageDeletion = ({ imageId, onClose, onSubmit }) => {
         >
           ✕
         </button>
-
-        {/* Main title */}
-        <div style={{ padding: "24px 24px 10px 24px" }}>
-          <div style={{ fontSize: "18px", fontWeight: 700 }}>
-            Reason for Deletion:
-          </div>
-        </div>
-
-        {/* Reason list using your selection icons */}
-        <div
-          style={{
-            margin: "0 24px",
-            border: "1px solid #ccc",
-            borderRadius: "4px",
-            overflow: "hidden",
-          }}
-        >
-          {REASONS.map((r, index) => (
-            <div
-              key={r}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                padding: "6px 10px",
-                borderBottom:
-                  index === REASONS.length - 1 ? "none" : "1px solid #ddd",
-                cursor: "pointer",
-              }}
-              onClick={() => setSelected(r)}
-            >
-              {/* selection icon */}
-              <img
-                src={selected === r ? selectedBox : selectionBox}
-                alt=""
-                style={{
-                  width: "18px",
-                  height: "18px",
-                  marginRight: "8px",
-                }}
-              />
-
-              <span style={{ fontSize: "14px" }}>{r}</span>
+        {authType === "guest" && (
+          <div style={{ padding: "24px 24px 10px 24px" }}>
+            <div style={{ fontSize: "18px", fontWeight: 700 }}>
+              Are you sure you want to delete this image?
             </div>
-          ))}
-        </div>
+          </div>
+        )}
 
-        {/* Other reason text input */}
-        <div style={{ marginTop: "14px", padding: "0 24px" }}>
+        {authType === "user" && (
+          <div>
+        {/* Main title */}
+          <div style={{ padding: "24px 24px 10px 24px" }}>
+            <div style={{ fontSize: "18px", fontWeight: 700 }}>
+              Reason for Deletion:
+            </div>
+          </div>
+
+          {/* Reason list using your selection icons */}
           <div
             style={{
-              fontSize: "15px",
-              fontWeight: 700,
-              marginBottom: "8px",
+              margin: "0 24px",
+              border: "1px solid #ccc",
+              borderRadius: "4px",
+              overflow: "hidden",
             }}
           >
-            Other reason:
+            {REASONS.map((r, index) => (
+              <div
+                key={r}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "6px 10px",
+                  borderBottom:
+                    index === REASONS.length - 1 ? "none" : "1px solid #ddd",
+                  cursor: "pointer",
+                }}
+                onClick={() => setSelected(r)}
+              >
+                {/* selection icon */}
+                <img
+                  src={selected === r ? selectedBox : selectionBox}
+                  alt=""
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    marginRight: "8px",
+                  }}
+                />
+
+                <span style={{ fontSize: "14px" }}>{r}</span>
+              </div>
+            ))}
           </div>
 
-          <textarea
-            value={isOther ? otherText : ""} // only show text when "other" is selected
-            onChange={(e) => {
-              if (selected !== "other") setSelected("other");
-              setOtherText(e.target.value);
-            }}
-            style={{
-              width: "100%",
-              height: "85px",
-              borderRadius: "6px",
-              border: "1px solid #ccc",
-              padding: "10px",
-              fontSize: "14px",
-              resize: "none",
-              outline: "none",
-            }}
-          />
-        </div>
+          {/* Other reason text input */}
+          <div style={{ marginTop: "14px", padding: "0 24px" }}>
+            <div
+              style={{
+                fontSize: "15px",
+                fontWeight: 700,
+                marginBottom: "8px",
+              }}
+            >
+              Other reason:
+            </div>
+
+            <textarea
+              value={isOther ? otherText : ""} // only show text when "other" is selected
+              onChange={(e) => {
+                if (selected !== "other") setSelected("other");
+                setOtherText(e.target.value);
+              }}
+              style={{
+                width: "100%",
+                height: "85px",
+                borderRadius: "6px",
+                border: "1px solid #ccc",
+                padding: "10px",
+                fontSize: "14px",
+                resize: "none",
+                outline: "none",
+              }}
+            />
+          </div>
+          </div>
+        )}
 
         {/* Bottom buttons */}
         <div
@@ -242,9 +275,15 @@ const ImageDeletion = ({ imageId, onClose, onSubmit }) => {
           <button
             disabled={!canDelete}
             onClick={ async () => {
+              if (authType === "user") {
               const finalReason =
                 selected === "other" ? otherText.trim() : selected;
               await imageDelete(finalReason);
+              } else if (authType === "guest") {
+                const finalReason =
+                selected === "other" ? otherText.trim() : selected;
+              await imageDeleteforGuest(finalReason);
+              }
 
               
             }}

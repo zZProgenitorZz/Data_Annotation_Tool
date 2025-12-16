@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, status, HTTPException
 from backend.src.services.user_service import UserLogin, ACCESS_TOKEN_EXPIRE_MINUTES, UserService
 from fastapi.security import OAuth2PasswordRequestForm
 from typing import Annotated, List
-from backend.src.models.user import Token, User, UserDto, UserUpdate
+from backend.src.models.user import Token, User, UserDto, UserUpdate, InviteUserDto, CompleteInviteDto, ResetPasswordRequestDto
 from backend.src.helpers.auth_helper import require_roles
 from datetime import timedelta
 
@@ -70,5 +70,44 @@ async def update_user(user_id: str, updated_user: UserUpdate, current_user: User
 async def delete_user(user_id: str, current_user: UserDto = Depends(require_roles(["admin"]))):
     try:
         return await user_service.delete_user(user_id, current_user)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+
+# Invite user (admin)
+@router.post("/invite", response_model=bool)
+async def invite_user(
+    invite: InviteUserDto,
+    current_user: UserDto = Depends(require_roles(["admin"])),
+):
+    try:
+        return await user_service.invite_user(invite, current_user)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# Complete invite (user maakt eigen wachtwoord)
+@router.post("/complete-invite", response_model=bool)
+async def complete_invite(dto: CompleteInviteDto):
+    try:
+        return await user_service.complete_invite(dto)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+# Invite user (admin)
+@router.post("/request-reset", response_model=bool)
+async def request_password_reset(
+    reset: ResetPasswordRequestDto):
+    try:
+        return await user_service.request_password_reset(reset)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# Complete invite (user maakt eigen wachtwoord)
+@router.post("/complete-reset", response_model=bool)
+async def completePasswordReset(dto: CompleteInviteDto):
+    try:
+        return await user_service.completePasswordReset(dto)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

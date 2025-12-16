@@ -32,8 +32,7 @@ class LogRepository:
                 logs.append(Log(
                     **log
                 ))
-            return logs
-        return None
+        return logs
             
     async def delete_log(self, log_id: str) -> bool:
         result = await self.collection.delete_one({"_id" : PyObjectId(log_id)})

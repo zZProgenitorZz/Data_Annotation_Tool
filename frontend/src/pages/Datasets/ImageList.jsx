@@ -1,4 +1,5 @@
 import React, {useState, useEffect, useContext} from "react";
+import { useNavigate } from "react-router-dom";
 import { listImages, softDeleteImage, hardDeleteImage } from "../../services/ImageService";
 import UploadImages from "../../components/ImageUploader.jsx"
 import Header from "../../components/Header.jsx";
@@ -12,8 +13,21 @@ const ImageList = () => {
   const [imageList, setImageList] = useState([]);
   const [dataset, setDataset] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [annotations, setAnnotations] = useState(null)
+  const [annotations, setAnnotations] = useState({})
   const {currentUser} = useContext(AuthContext)
+
+  const navigate = useNavigate();
+
+  const handleOpenAnnotationPage = (imageId) => {
+    if (!dataset) return;
+
+    const key = `selectedImage:${dataset.id}`;
+    localStorage.setItem(key, imageId);
+
+    // naar AnnotationPage
+    navigate("/annotation");
+  };
+
 
 
   useEffect(() => {
@@ -40,7 +54,7 @@ const ImageList = () => {
   };
 
   const fetchAnnotations = async () => {
-    if (!imageList) return;
+    if (!imageList || imageList.length === 0) return;
     const allAnnotation = {}
     for (const image of imageList) {
       try {
@@ -134,7 +148,7 @@ const ImageList = () => {
               .map((img, idx) => {
                 const key = img.id ?? img._id ?? idx;
                 const fileName = img.fileName ?? img.originalFilename ?? "(no name)";
-                const annotation = annotations[img.id];
+                const annotation = annotations?.[img.id];
                 
                 const annotated = annotation?.annotations?.length > 0;
 
@@ -144,11 +158,17 @@ const ImageList = () => {
                     className="grid grid-cols-[minmax(0,1fr)_140px] items-center bg-white hover:bg-gray-50 transition-colors py-3"
                   >
                     {/* Filename cell */}
+                    {/* Filename cell */}
                     <div className="px-4 min-w-0">
-                      <span className="block truncate text-gray-900">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAnnotationPage(img.id)}
+                        className="block w-full text-left truncate text-gray-900 hover:text-blue-600 hover:underline"
+                      >
                         {fileName}
-                      </span>
+                      </button>
                     </div>
+
 
                     {/* Status indicator cell */}
                     <div className="px-4 flex items-center justify-center">

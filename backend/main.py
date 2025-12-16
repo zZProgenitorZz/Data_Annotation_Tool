@@ -10,6 +10,7 @@ from backend.src.router.annotation_router import router as annnotation_router
 from backend.src.router.remark_router import router as remark_router
 from fastapi.middleware.cors import CORSMiddleware
 from backend.src.router.guest_router import router as guest_router
+from backend.src.router.log_router import router as log_router
 
 
 
@@ -40,6 +41,8 @@ app.include_router(label_router, prefix="/label", tags=["label"])
 app.include_router(annnotation_router, prefix="/annotation", tags=["annotation"])
 
 app.include_router(remark_router, prefix="/remark", tags=["remark"])
+
+app.include_router(log_router, prefix="/log", tags=["log"])
 
 @app.get("/")
 def read_root():

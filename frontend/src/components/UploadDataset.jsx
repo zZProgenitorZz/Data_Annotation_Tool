@@ -3,7 +3,7 @@ import Select from "react-select";
 import { AuthContext } from "./AuthContext";
 import {buildAssignedTo, parseAssignedFromDataset} from "../utils/utils"
 
-const UploadDataset = ({ isOpen, onClose, users, onSave, datasetToEdit }) => {
+const UploadDataset = ({ isOpen, onClose, users, onSave, datasetToEdit, isUploading, uploadMsg, uploadPct }) => {
 const [errorMessage, setErrorMessage] = useState("");
 
   const initialFormData = {
@@ -154,7 +154,7 @@ const [errorMessage, setErrorMessage] = useState("");
     });
     setSelectedFiles([]);
     setErrorMessage("")
-    onClose();
+    //onClose();
   };
 
 
@@ -403,17 +403,27 @@ const [errorMessage, setErrorMessage] = useState("");
           </div>
 
           {/* date_of_collection */}
-          <input
-            type="date"
-            name="date_of_collection"
-            placeholder="Date of sample collection (dd-mm-jjjj)"
-            value={formData.date_of_collection}
-            onChange={handleChange}
-            
-            onFocus={(e) => (e.target.style.outline = focusStyle.outline)}
-            onBlur={(e) => (e.target.style.outline = blurStyle.outline)}
-            style={inputStyle}
-          />
+          
+            <div
+            style={{
+              color: "#4B5563",
+              fontSize: "15px",
+              overflowWrap: "anywhere",
+            }}>
+              Date of sample collection
+              </div>
+            <input
+              type="date"
+              name="date_of_collection"
+              placeholder="Date of sample collection (dd-mm-jjjj)"
+              value={formData.date_of_collection}
+              onChange={handleChange}
+              
+              onFocus={(e) => (e.target.style.outline = focusStyle.outline)}
+              onBlur={(e) => (e.target.style.outline = blurStyle.outline)}
+              style={inputStyle}
+            />
+          
 
           {/* location_of_collection */}
           <input
@@ -442,6 +452,16 @@ const [errorMessage, setErrorMessage] = useState("");
             }}
           />
         </div>
+        {isUploading && (
+          <div className="px-[16px] pb-[10px]">
+            <div className="text-[14px] text-[#111]">{uploadMsg}</div>
+            <div className="h-[8px] bg-[#E5E7EB] rounded mt-[6px] overflow-hidden">
+              <div className="h-full bg-[#66B8A6]" style={{ width: `${uploadPct}%` }} />
+            </div>
+            <div className="text-[12px] text-[#4B5563] mt-[4px]">{uploadPct}%</div>
+          </div>
+        )}
+
         <div className="h-[25px]  flex items-center justify-center">
             {errorMessage && (
               <p className="text-[#FF2C2C] text-[13px] leading-none" style={{ color: '#f93030ff', fontWeight: 500 ,  textShadow: '1px 1px 2px rgba(0,0,0,0.2)'}}>
@@ -461,6 +481,7 @@ const [errorMessage, setErrorMessage] = useState("");
           }}
         >
           <button
+            disabled = {isUploading}
             onClick={() => {
               setErrorMessage("");   // 1) error leegmaken
               if (onClose) {
@@ -473,17 +494,20 @@ const [errorMessage, setErrorMessage] = useState("");
               backgroundColor: "#E5E7EB",
               color: "#000000",
               border: "2px solid #dadadaff",
-              cursor: "pointer",
+             // cursor: "pointer",
               fontSize: "20px",
               fontWeight: 600,
               fontStyle: "italic",
               transition: "all 0.2s ease",
+              opacity: isUploading ? 0.6 : 1, 
+              cursor: isUploading ? "not-allowed" : "pointer"
             }}
             {...buttonEffects}
           >
             Cancel
           </button>
           <button
+            disabled={isUploading}
             onClick={handleSave}
             style={{
               padding: "12px 26px",
@@ -491,11 +515,13 @@ const [errorMessage, setErrorMessage] = useState("");
               backgroundColor: "#B3DCD7",
               color: "#000000",
               border: "2px solid #91d0c9ff",
-              cursor: "pointer",
+              //cursor: "pointer",
               fontSize: "20px",
               fontWeight: 600,
               fontStyle: "italic",
               transition: "all 0.2s ease",
+              opacity: isUploading ? 0.6 : 1, 
+              cursor: isUploading ? "not-allowed" : "pointer"
             }}
             {...buttonEffects}
           >

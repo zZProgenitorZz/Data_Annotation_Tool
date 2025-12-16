@@ -30,6 +30,13 @@ class ImageMetadataRepo:
         return ImageMetadata(
             **image_metadata
         )
+    
+    # Get image state
+    async def get_image_state(self, image_id: str):
+        image = await self.collection.find_one({"_id": PyObjectId(image_id)}, {"is_completed": 1, "datasetId": 1, "is_active": 1})
+        if not image:
+            return None
+        return image
 
     # Delete an image metadata by id
     async def delete_image_metadata(self, image_metadata_id: str) -> bool:
