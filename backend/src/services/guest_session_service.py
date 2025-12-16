@@ -10,7 +10,6 @@ import logging
 import os
 from pathlib import Path
 from PIL import Image
-from backend.core.db import BASE_PATH
 
 #------------------------------------------------------------
 def get_guest_user(guest_id : str | None = None):
