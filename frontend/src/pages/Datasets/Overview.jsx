@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef, useContext } from "react";
+import { useNavigate } from "react-router-dom";
 import UploadDataset from "../../components/UploadDataset";
 import selectionBox from "../../assets/selectionbox.png";
 import selectedBox from "../../assets/selectedbox.png";
@@ -46,6 +47,8 @@ const Overview = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState("");
   const [uploadPct, setUploadPct] = useState(0);
+
+  const navigate = useNavigate();
 
 
 
@@ -318,6 +321,7 @@ const Overview = () => {
           {!editMode ? (
             <>
               <button
+                onClick={() => navigate("/feedback")}
                 className="shrink-0 h-[50px] px-3 md:px-[16px] whitespace-nowrap bg-[#E5F9F7]
                 text-[#000000] text-[20px] font-[600] italic rounded-[10px]
                 border-[#CCCCCC] cursor-pointer hover:brightness-95
