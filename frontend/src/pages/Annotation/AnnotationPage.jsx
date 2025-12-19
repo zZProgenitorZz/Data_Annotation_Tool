@@ -1728,14 +1728,6 @@ const AnnotationPage = () => {
           {/* === Feedback Request Popup === */}
           {showFeedbackRequest && (
             <FeedbackRequest
-              annotationId={() => {
-                if (bbox.selectedId) return bbox.selectedId;
-                if (poly.selectedId) return poly.selectedId;
-                if (ellipse.selectedId) return ellipse.selectedId;
-                if (pencil.selectedId) return pencil.selectedId;
-                if (mask.selectedId) return mask.selectedId;
-                return null;
-              }}
               imageId={selectedImageId}
               fileName={selectedMeta?.fileName || "No file selected"}
               onClose={() => setShowFeedbackRequest(false)}

@@ -119,6 +119,20 @@ export async function softDeleteImages(datasetId) {
   }
 }
 
+export async function restoreImage(datasetId, imageIds) {
+
+  try {
+    const { data } = await api.put(`/image/${datasetId}/restore`, imageIds);
+    return data
+  }catch (error) {
+    if (error?.response?.status === 404) {
+      return;
+    }
+    console.error("Error restoring image:", error);
+    throw error;
+  }
+}
+
 
 export async function softDeleteImage(imageId) {
   
@@ -159,3 +173,4 @@ export async function getGuestImages(datasetId){
   const response = await api.get(`/image/guest-images/${datasetId}`)
   return response.data
 }
+

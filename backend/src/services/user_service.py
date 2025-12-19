@@ -282,7 +282,6 @@ class UserService:
         existing_by_username = await self.user_repo.get_user_by_username_or_email(invite.username)
         existing_by_email = await self.user_repo.get_user_by_username_or_email(invite.email)
         
-
         # Als er iemand bestaat, maar username/email horen bij 2 verschillende users -> conflict
         if existing_by_username and existing_by_email and existing_by_username.id != existing_by_email.id:
             raise HTTPException(status_code=400, detail="Username and email belong to different accounts")

@@ -21,7 +21,9 @@ class RemarkService:
         remarks = await self.repo.get_all_remarks(dataset_id)
         if not remarks:
             raise NotFoundError("No remarks found in the database")
-        return [self._to_dto(r) for r in remarks]
+        remarks_dto = [self._to_dto(r) for r in remarks]
+        # print(remarks_dto)
+        return remarks_dto
 
     # create remark
     async def create_remark(self, remark: Remark, current_user: UserDto | None = None) -> str:
@@ -55,14 +57,12 @@ class RemarkService:
     def _to_dto(self, remark: Remark) -> RemarkDTO:
         return RemarkDTO(
             id=str(remark.id),
-            annotation_id=str(remark.annotation_id) if remark.annotation_id else None,
-            image_id=str(remark.image_id) if remark.image_id else None,
-            dataset_id=str(remark.datasetId),
-            # from_user=str(remark.from_user) if remark.from_user else None,
-            # to_users=[str(u) for u in remark.to_users] if remark.to_users else None,
+            imageId=str(remark.imageId),
+            datasetId=str(remark.datasetId),
             message=remark.message,
             status=remark.status,
             reply=remark.reply,
+            feedback=remark.feedback,
 
             createdAt=remark.createdAt,
             updatedAt=remark.updatedAt

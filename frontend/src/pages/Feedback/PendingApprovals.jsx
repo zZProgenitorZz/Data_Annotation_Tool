@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import expandIcon from "../../assets/feedback/expand-details.png";
@@ -8,128 +8,390 @@ import maximizeIcon from "../../assets/feedback/maximize.png";
 import approveIcon from "../../assets/feedback/approve-for-deletion.png";
 import denyIcon from "../../assets/feedback/deny-deletion.png";
 
-import img1 from "../../assets/feedback/008.png";
-import img2 from "../../assets/feedback/annotated.png";
-
 import prevIcon from "../../assets/feedback/previous_image.png";
 import nextIcon from "../../assets/feedback/next_image.png";
 
 import Toast from "../Annotation/components/Toast";
 
-function makeDemoImages(n) {
-  const out = [];
-  for (let i = 1; i <= n; i++) {
-    const src = i % 2 === 0 ? img2 : img1;
-    const num = String(i).padStart(2, "0");
-    out.push({ src, filename: `demo_${num}.png` });
-  }
-  return out;
+import { AuthContext } from "../../components/AuthContext";
+import { getAllDatasets, restoreDataset} from "../../services/datasetService";
+import { getAllUsers } from "../../services/authService";
+import { parseAssignedTo } from "../../utils/utils";
+
+import { getSignedUrl, hardDeleteImage, listImages, restoreImage } from "../../services/ImageService";
+import { hard_Delete_Dataset } from "../../utils/deleteDataset";
+
+import { getAllRemarks, updateRemark } from "../../services/remarkService";
+
+/** ---------------------------
+ *  Small utils
+ *  -------------------------- */
+function clamp(n, a, b) {
+  return Math.max(a, Math.min(b, n));
 }
 
+function safeStr(v) {
+  return v == null ? "" : String(v);
+}
+
+function toId(v) {
+  return v == null ? "" : String(v);
+}
+
+function getFileNameFromSrc(src) {
+  if (!src) return "";
+  try {
+    const clean = String(src).split("?")[0].split("#")[0];
+    const parts = clean.split("/");
+    return parts[parts.length - 1] || "";
+  } catch {
+    return "";
+  }
+}
+
+async function fetchAllImages(datasetId) {
+  // Used only to resolve filenames (optional).
+  const limit = 200;
+  let offset = 0;
+  const all = [];
+
+  while (true) {
+    const res = await listImages(datasetId, { limit, offset });
+
+    const page = Array.isArray(res)
+      ? res
+      : res?.items || res?.images || res?.data || [];
+
+    if (!Array.isArray(page) || page.length === 0) break;
+
+    all.push(...page);
+    if (page.length < limit) break;
+
+    offset += limit;
+    if (offset > 5000) break; // safety
+  }
+
+  return all;
+}
+
+/** remark is "pending deletion request" when feedback === false AND status === false */
+function isPendingDeletionRemark(r) {
+  return r?.feedback === false && r?.status === false;
+}
+
+function hasImageId(r) {
+  const id = safeStr(r?.imageId).trim();
+  return id.length > 0;
+}
+
+/** ---------------------------
+ *  Component
+ *  -------------------------- */
 export default function PendingApprovals() {
+  const { currentUser, authType, loading } = useContext(AuthContext);
+
+  const isAllowed =
+    !loading &&
+    authType === "user" &&
+    (currentUser?.role === "admin" || currentUser?.role === "user");
+
+  /** ---------------------------
+   *  UI state
+   *  -------------------------- */
+  const [toast, setToast] = useState(null);
+  const showToast = (message, type = "success") => {
+    setToast(null);
+    requestAnimationFrame(() => setToast({ message, type }));
+  };
+
   const [openRow, setOpenRow] = useState(null);
   const [imageIndex, setImageIndex] = useState(0);
 
-  const [imageModal, setImageModal] = useState(null);
-  const ignoreCloseUntilRef = useRef(0);
-
-  const [confirmShown, setConfirmShown] = useState({
-    approve: false,
-    deny: false,
-  });
-  const [confirmModal, setConfirmModal] = useState(null);
-
   const [selected, setSelected] = useState(new Set());
   const [anchorIndex, setAnchorIndex] = useState(null);
-
   const thumbRefs = useRef([]);
 
   const [popupUsers, setPopupUsers] = useState(null);
-  function openUsersPopup(list) {
-    setPopupUsers(list);
-  }
-  function closeUsersPopup() {
-    setPopupUsers(null);
-  }
+  const openUsersPopup = (list) => setPopupUsers(list);
+  const closeUsersPopup = () => setPopupUsers(null);
 
-  const [toast, setToast] = useState(null);
-  function showToast(message, type = "success") {
-    setToast(null);
-    requestAnimationFrame(() => setToast({ message, type }));
-  }
+  const [confirmShown, setConfirmShown] = useState({ approve: false, deny: false });
+  const [confirmModal, setConfirmModal] = useState(null); // { type, rowId }
 
-  const topBtnStyle = {
-    padding: "6px 10px",
-    minWidth: "92px",
-    height: "34px",
-    borderRadius: "10px",
-    backgroundColor: "#E5E7EB",
-    border: "1px solid #C9CED8",
-    cursor: "pointer",
-    fontSize: "13px",
-    fontWeight: 700,
-    userSelect: "none",
-    whiteSpace: "nowrap",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
+  /** Image modal */
+  const [imageModal, setImageModal] = useState(null); // { images, index }
+  const ignoreCloseUntilRef = useRef(0);
+  const openImageModal = (images, index) => {
+    ignoreCloseUntilRef.current = Date.now() + 250;
+    setImageModal({ images, index });
+  };
+  const closeImageModal = () => setImageModal(null);
+  const guardedCloseImageModal = () => {
+    if (Date.now() < ignoreCloseUntilRef.current) return;
+    closeImageModal();
   };
 
-  function getFileNameFromSrc(src) {
-    if (!src) return "";
+  /** ---------------------------
+   *  Data state
+   *  -------------------------- */
+  /**
+   * Row model:
+   * {
+   *   id: rowId,
+   *   kind: "dataset" | "images",
+   *   datasetId,
+   *   datasetName,
+   *   owner,
+   *   assigned: [username...],
+   *   reviewer: [username...],
+   *   // dataset-kind:
+   *   datasetRemarks: [{ remarkId, message, createdAt, updatedAt }]
+   *   // images-kind:
+   *   images: [{ id:imageId, filename, src, remarkId, remarkMessage }]
+   * }
+   */
+  const [approvals, setApprovals] = useState([]);
+  const [pendingLoading, setPendingLoading] = useState(false);
+
+  const [allUsers, setAllUsers] = useState([]);
+
+  // Cache for resolving filenames (datasetId -> Map(imageId -> filename))
+  const imageNameCacheRef = useRef(new Map());
+
+  /** ---------------------------
+   *  Username helpers (same idea as DatasetManagement)
+   *  -------------------------- */
+  // const getUserById = (id) =>
+  //   allUsers.find((u) => String(u.id) === String(id)) || null;
+
+  // const getUserNameById = (id) => {
+  //   if (!id) return "";
+  //   const u = getUserById(id);
+  //   console.log(u)
+  //   return u ? u.username : String(id);
+  // };
+
+  // const getAssignedNames = (dataset) => {
+  //   const map = parseAssignedTo(dataset.assignedTo || []);
+  //   const names = [];
+  //   Object.entries(map).forEach(([userId, role]) => {
+  //     if (role === "annotator") {
+  //       const u = getUserById(userId);
+  //       names.push(u ? u.username : userId);
+  //     }
+  //   });
+  //   return names;
+  // };
+
+  // const getReviewerNames = (dataset) => {
+  //   const map = parseAssignedTo(dataset.assignedTo || []);
+  //   const names = [];
+  //   Object.entries(map).forEach(([userId, role]) => {
+  //     if (role === "reviewer") {
+  //       const u = getUserById(userId);
+  //       names.push(u ? u.username : userId);
+  //     }
+  //   });
+  //   return names;
+  // };
+
+  /** ---------------------------
+   *  Load pending approvals (remarks-driven)
+   *  -------------------------- */
+  async function loadPendingApprovals() {
+    if (!isAllowed) return;
+
+    setPendingLoading(true);
     try {
-      const clean = String(src).split("?")[0].split("#")[0];
-      const parts = clean.split("/");
-      return parts[parts.length - 1] || "";
-    } catch {
-      return "";
+      // Load datasets + users in parallel
+      const [datasets, users] = await Promise.all([getAllDatasets(), getAllUsers()]);
+      const dsList = Array.isArray(datasets) ? datasets : [];
+      const userList = Array.isArray(users) ? users : [];
+
+      setAllUsers(userList);
+
+      // maak een lokale map die meteen beschikbaar is (geen state timing issues)
+      const userMap = new Map(userList.map((u) => [String(u.id), u]));
+
+      //  lokale helpers die NIET op state leunen
+      const getUserByIdLocal = (id) => userMap.get(String(id)) || null;
+
+      const getUserNameByIdLocal = (id) => {
+        if (!id) return "";
+        const u = getUserByIdLocal(id);
+        return u ? u.username : String(id);
+      };
+
+      const getAssignedNamesLocal = (dataset) => {
+        const map = parseAssignedTo(dataset.assignedTo || []);
+        const names = [];
+        Object.entries(map).forEach(([userId, role]) => {
+          if (role === "annotator") names.push(getUserNameByIdLocal(userId));
+        });
+        return names;
+      };
+
+      const getReviewerNamesLocal = (dataset) => {
+        const map = parseAssignedTo(dataset.assignedTo || []);
+        const names = [];
+        Object.entries(map).forEach(([userId, role]) => {
+          if (role === "reviewer") names.push(getUserNameByIdLocal(userId));
+        });
+        return names;
+      };
+
+      // Build dataset map for quick lookup
+      const dsById = new Map(dsList.map((ds) => [toId(ds?.id ?? ds?._id), ds]));
+
+      // Fetch remarks PER dataset (backend endpoint expects dataset_id param)
+      // Concurrency limit so admin page doesn't freeze if there are many datasets
+      const concurrency = 6;
+      let cursor = 0;
+      const results = [];
+
+      const workers = new Array(concurrency).fill(0).map(async () => {
+        while (cursor < dsList.length) {
+          const ds = dsList[cursor++];
+          const datasetId = toId(ds?.id ?? ds?._id);
+          if (!datasetId) continue;
+
+          try {
+            const remarks = await getAllRemarks(datasetId);
+            console.log(remarks)
+            const list = Array.isArray(remarks) ? remarks : [];
+
+            const pending = list.filter(isPendingDeletionRemark);
+            if (pending.length === 0) continue;
+
+            // Split dataset deletion requests vs image deletion requests
+            const datasetRequests = pending
+              .filter((r) => !hasImageId(r))
+              .map((r) => ({
+                remarkId: toId(r?._id ?? r?.id),
+                message: safeStr(r?.message),
+                createdAt: r?.createdAt,
+                updatedAt: r?.updatedAt,
+              }));
+
+            // Group image requests by imageId, keep latest updatedAt if duplicates
+            const imageReqByImageId = new Map();
+            pending
+              .filter((r) => hasImageId(r))
+              .forEach((r) => {
+                const imageId = safeStr(r.imageId).trim();
+                const next = {
+                  imageId,
+                  remarkId: toId(r?._id ?? r?.id),
+                  remarkMessage: safeStr(r?.message),
+                  createdAt: r?.createdAt,
+                  updatedAt: r?.updatedAt,
+                };
+
+                const prev = imageReqByImageId.get(imageId);
+                if (!prev) {
+                  imageReqByImageId.set(imageId, next);
+                  return;
+                }
+
+                // prefer most recent updatedAt (fallback: keep existing)
+                const prevTime = prev?.updatedAt ? new Date(prev.updatedAt).getTime() : 0;
+                const nextTime = next?.updatedAt ? new Date(next.updatedAt).getTime() : 0;
+                if (nextTime >= prevTime) imageReqByImageId.set(imageId, next);
+              });
+
+            const imageRequests = Array.from(imageReqByImageId.values()).map((x) => ({
+              id: x.imageId,
+              filename: `image_${x.imageId}`, // will try to resolve later when row opens
+              src: null,
+              remarkId: x.remarkId,
+              remarkMessage: x.remarkMessage,
+              createdAt: x.createdAt,
+              updatedAt: x.updatedAt,
+            }));
+
+            // Build base info from dataset
+            const dsObj = dsById.get(datasetId);
+            console.log(dsObj?.createdBy)
+            const datasetName = safeStr(dsObj?.name || `Dataset ${datasetId}`);
+            const owner = getUserNameByIdLocal(dsObj?.createdBy) || "Admin";
+            const assigned = getAssignedNamesLocal(dsObj || {});
+            const reviewer = getReviewerNamesLocal(dsObj || {});
+
+            // Row IDs must be unique: allow both "dataset" + "images" rows for same dataset
+            if (datasetRequests.length) {
+              results.push({
+                id: `ds:${datasetId}`,
+                kind: "dataset",
+                datasetId,
+                datasetName,
+                owner,
+                assigned,
+                reviewer,
+                datasetRemarks: datasetRequests,
+                images: [],
+              });
+            }
+
+            if (imageRequests.length) {
+              results.push({
+                id: `imgs:${datasetId}`,
+                kind: "images",
+                datasetId,
+                datasetName,
+                owner,
+                assigned,
+                reviewer,
+                datasetRemarks: [],
+                images: imageRequests,
+              });
+            }
+          } catch (e) {
+            // if remark endpoint fails for a dataset, just skip it
+            console.error("Failed loading remarks for dataset:", ds?.id, e);
+          }
+        }
+      });
+
+      await Promise.all(workers);
+
+      // Sort stable: datasetName
+      results.sort((a, b) => a.datasetName.localeCompare(b.datasetName));
+
+      setApprovals(results);
+
+      // Keep openRow if still exists
+      setOpenRow((prev) => (prev && results.some((r) => r.id === prev) ? prev : null));
+      setSelected(new Set());
+      setAnchorIndex(null);
+      setImageIndex(0);
+      setImageModal(null);
+    } catch (err) {
+      console.error("Failed loading pending approvals:", err);
+      showToast("Failed to load pending approvals.", "error");
+    } finally {
+      setPendingLoading(false);
     }
   }
 
-  function openImageModal(images, index) {
-    ignoreCloseUntilRef.current = Date.now() + 250;
-    setImageModal({ images, index });
-  }
+  useEffect(() => {
+    if (loading) return;
+    if (!isAllowed) return;
+    loadPendingApprovals();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, isAllowed]);
 
-  function closeImageModal() {
-    setImageModal(null);
-  }
-
-  function guardedCloseImageModal() {
-    if (Date.now() < ignoreCloseUntilRef.current) return;
-    closeImageModal();
-  }
-
-  const [approvals, setApprovals] = useState([
-    {
-      id: 1,
-      dataset: "Dataset1182",
-      name: "SchistoH_urine.zip",
-      owner: "anthony",
-      assigned: ["john", "timothy"],
-      reviewer: ["jim", "alex", "marc"],
-      images: makeDemoImages(10),
-    },
-    {
-      id: 2,
-      dataset: "Dataset155",
-      name: "Ascaris_stool.zip",
-      owner: "anthony",
-      assigned: ["anthony"],
-      reviewer: ["timothy"],
-      images: makeDemoImages(10),
-    },
-  ]);
-
-  function toggleOpen(id) {
-    if (openRow === id) {
+  /** ---------------------------
+   *  Row open / navigation
+   *  -------------------------- */
+  function toggleOpen(rowId) {
+    if (openRow === rowId) {
       setOpenRow(null);
       setSelected(new Set());
       setAnchorIndex(null);
       return;
     }
+    setOpenRow(rowId);
     setImageIndex(0);
-    setOpenRow(id);
     setSelected(new Set());
     setAnchorIndex(null);
   }
@@ -137,7 +399,6 @@ export default function PendingApprovals() {
   function prevImage(max) {
     setImageIndex((i) => (i === 0 ? max - 1 : i - 1));
   }
-
   function nextImage(max) {
     setImageIndex((i) => (i === max - 1 ? 0 : i + 1));
   }
@@ -151,7 +412,6 @@ export default function PendingApprovals() {
       return { ...m, index: nextIdx };
     });
   }
-
   function nextModal() {
     setImageModal((m) => {
       if (!m) return m;
@@ -199,73 +459,129 @@ export default function PendingApprovals() {
     return Array.from(selected).sort((a, b) => a - b);
   }
 
-  function applyDecision(type, rowId) {
-    const count = selected.size > 0 ? selected.size : 1;
+  /** ---------------------------
+   *  When open image-row:
+   *   1) try resolve filenames once (optional)
+   *   2) lazy load signed urls around current index + selected
+   *  -------------------------- */
+  useEffect(() => {
+    if (!openRow) return;
+    const row = approvals.find((r) => r.id === openRow);
+    if (!row || row.kind !== "images") return;
 
-    const row = approvals.find((r) => r.id === rowId);
-    if (!row) {
-      showToast("Error: dataset not found.", "error");
-      return;
-    }
+    let cancelled = false;
 
-    setApprovals((prev) => {
-      const curr = prev.find((r) => r.id === rowId);
-      if (!curr) return prev;
+    async function resolveFilenamesOnce() {
+      const dsId = row.datasetId;
+      if (!dsId) return;
 
-      const targets = getTargets();
-      const toRemove = new Set(targets);
-      const nextImages = curr.images.filter((_, idx) => !toRemove.has(idx));
+      if (imageNameCacheRef.current.has(dsId)) return;
 
-      const next = prev
-        .map((r) => (r.id === rowId ? { ...r, images: nextImages } : r))
-        .filter((r) => r.images.length > 0);
-
-      const nextLen = nextImages.length;
-
-      setSelected(new Set());
-      setAnchorIndex(null);
-
-      if (nextLen === 0) {
-        setOpenRow(null);
-        setImageIndex(0);
-      } else {
-        setImageIndex((i) => {
-          const clamped = Math.min(i, nextLen - 1);
-          return Math.max(0, clamped);
+      try {
+        const all = await fetchAllImages(dsId);
+        const map = new Map();
+        (all || []).forEach((img) => {
+          const id = toId(img?.id ?? img?._id ?? img?.imageId);
+          if (!id) return;
+          const filename =
+            img?.originalFilename ||
+            img?.filename ||
+            img?.name ||
+            `image_${id}`;
+          map.set(id, filename);
         });
+        imageNameCacheRef.current.set(dsId, map);
+
+        if (cancelled) return;
+
+        setApprovals((prev) =>
+          prev.map((r) => {
+            if (r.id !== openRow) return r;
+            const nextImages = (r.images || []).map((im) => {
+              const fn = map.get(im.id);
+              return fn ? { ...im, filename: fn } : im;
+            });
+            return { ...r, images: nextImages };
+          })
+        );
+      } catch (e) {
+        // If this fails, it's fine: we keep fallback filenames.
+        console.warn("Could not resolve image filenames for dataset:", dsId, e);
       }
-
-      setImageModal((m) => (m ? null : m));
-
-      return next;
-    });
-
-    if (type === "approve") {
-      showToast(
-        `${count} image${count > 1 ? "s" : ""} removed from the dataset.`,
-        "success"
-      );
-    } else {
-      showToast(
-        `${count} image${count > 1 ? "s" : ""} kept in the dataset.`,
-        "success"
-      );
     }
-  }
 
-  function handleDecisionClick(type, rowId) {
-    if (!confirmShown?.[type]) {
-      setConfirmModal({ type, rowId });
-      return;
+    async function loadSignedUrls() {
+      const max = row.images.length;
+      if (!max) return;
+
+      // load: current +/- 12 and all selected
+      const want = new Set();
+      const from = clamp(imageIndex - 12, 0, max - 1);
+      const to = clamp(imageIndex + 12, 0, max - 1);
+      for (let i = from; i <= to; i++) want.add(i);
+      selected.forEach((i) => want.add(i));
+
+      const indices = Array.from(want).filter((i) => i >= 0 && i < max);
+      if (!indices.length) return;
+
+      let cursor = 0;
+      const concurrency = 5;
+
+      const workers = new Array(concurrency).fill(0).map(async () => {
+        while (cursor < indices.length) {
+          const idx = indices[cursor++];
+          const img = row.images[idx];
+          if (!img?.id) continue;
+          if (img?.src) continue;
+
+          try {
+            const res = await getSignedUrl(img.id);
+            const url = res?.url || res;
+            if (!url || cancelled) continue;
+
+            setApprovals((prev) =>
+              prev.map((r) => {
+                if (r.id !== openRow) return r;
+                const nextImages = r.images.map((x, j) =>
+                  j === idx ? { ...x, src: url } : x
+                );
+                return { ...r, images: nextImages };
+              })
+            );
+          } catch {
+            // ignore
+          }
+        }
+      });
+
+      await Promise.all(workers);
     }
-    applyDecision(type, rowId);
-  }
 
+    resolveFilenamesOnce();
+    loadSignedUrls();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [openRow, approvals, imageIndex, selected]);
+
+  /** Scroll selected thumbnail into view */
+  useEffect(() => {
+    if (!openRow) return;
+    const el = thumbRefs.current?.[imageIndex];
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+  }, [openRow, imageIndex]);
+
+  /** ---------------------------
+   *  Keyboard shortcuts
+   *  -------------------------- */
   useEffect(() => {
     function handleKey(e) {
       if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) {
         if (!openRow || imageModal || confirmModal) return;
         const row = approvals.find((a) => a.id === openRow);
+        if (!row || row.kind !== "images") return;
         const total = row?.images?.length || 0;
         if (!total) return;
         e.preventDefault();
@@ -303,6 +619,8 @@ export default function PendingApprovals() {
       if (!openRow) return;
 
       const row = approvals.find((a) => a.id === openRow);
+      if (!row || row.kind !== "images") return;
+
       const max = row?.images?.length || 0;
       if (max === 0) return;
 
@@ -315,17 +633,224 @@ export default function PendingApprovals() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [openRow, imageModal, approvals, confirmModal, selected, popupUsers]);
 
-  useEffect(() => {
-    if (!openRow) return;
-    const el = thumbRefs.current?.[imageIndex];
-    if (!el) return;
+  /** ---------------------------
+   *  Approve / Deny (remark-driven)
+   *  - Approve: hard delete + remark.status=true
+   *  - Deny: only remark.status=true (kept)
+   *  -------------------------- */
+  async function resolveRemark(remarkId, replyText) {
+    if (!remarkId) return;
+    try {
+      await updateRemark(remarkId, {
+        status: true,
+        reply: replyText || "",
+      });
+    } catch (e) {
+      // Non-fatal: UI can still update
+      console.warn("Failed to update remark:", remarkId, e);
+    }
+  }
 
-    el.scrollIntoView({
-      behavior: "smooth",
-      block: "nearest",
-      inline: "nearest",
-    });
-  }, [openRow, imageIndex]);
+  async function applyDecision(type, rowId) {
+    const row = approvals.find((r) => r.id === rowId);
+    if (!row) {
+      showToast("Error: row not found.", "error");
+      return;
+    }
+
+    const isApprove = type === "approve";
+
+    try {
+      // DATASET deletion request
+      if (row.kind === "dataset") {
+        const remarks = row.datasetRemarks || [];
+        // Resolve all dataset-level pending remarks for this dataset
+        // 1) deny => restore dataset
+        if (!isApprove) {
+          try {
+            await restoreDataset(row.datasetId);
+          } catch (e) {
+            console.error("Restore dataset failed:", e);
+            showToast("Failed to restore dataset.", "error");
+            return;
+          }
+        }
+        //2)
+        for (const r of remarks) {
+          await resolveRemark(r.remarkId, isApprove ? "Approved" : "Denied");
+        }
+
+        //3)
+        if (isApprove) {
+          await hard_Delete_Dataset(row.datasetId);
+        }
+
+        setApprovals((prev) => prev.filter((x) => x.id !== rowId));
+        setOpenRow(null);
+        setSelected(new Set());
+        setAnchorIndex(null);
+        setImageModal(null);
+        setImageIndex(0);
+
+        showToast(
+          isApprove
+            ? "Dataset permanently deleted (request approved)."
+            : "Dataset deletion denied (request closed).",
+          "success"
+        );
+        return;
+      }
+
+      // IMAGES deletion requests
+      const targets = getTargets();
+      const items = targets
+        .map((idx) => row.images?.[idx])
+        .filter(Boolean);
+
+      if (!items.length) {
+        showToast("No images selected.", "error");
+        return;
+      }
+
+      const imageIds = items.map((x) => x.id).filter(Boolean)
+
+      if (!isApprove) {
+        //  1) Restore images (keep)
+        try {
+          // jouw service verwacht (datasetId, imageIds)
+          await restoreImage(row.datasetId, imageIds);
+        } catch (e) {
+          console.error("Restore failed:", e);
+          showToast("Failed to restore image(s).", "error");
+          return;
+        }
+
+        // 2) close request(s) only
+        for (const it of items) {
+          await resolveRemark(it.remarkId, "Denied");
+        }
+
+        const denySet = new Set(imageIds);
+        setApprovals((prev) =>
+          prev
+            .map((r) => {
+              if (r.id !== rowId) return r;
+              const nextImages = (r.images || []).filter((im) => !denySet.has(im.id));
+              return { ...r, images: nextImages };
+            })
+            .filter((r) => r.kind === "dataset" || (r.images && r.images.length > 0))
+        );
+
+        setSelected(new Set());
+        setAnchorIndex(null);
+        setImageModal(null);
+        setImageIndex((i) => 0);
+
+        showToast(
+          `${items.length} request${items.length > 1 ? "s" : ""} denied (images kept).`,
+          "success"
+        );
+        return;
+      }
+
+      // // Approve = hard delete images + resolve remarks
+      // const imageIds = items.map((x) => x.id).filter(Boolean);
+      
+      if (!imageIds.length) {
+        showToast("No images selected.", "error");
+        return;
+      }
+
+      let cursor = 0;
+      const concurrency = 5;
+      const ok = [];
+      const fail = [];
+
+      const workers = new Array(concurrency).fill(0).map(async () => {
+        while (cursor < imageIds.length) {
+          const id = imageIds[cursor++];
+          try {
+            await hardDeleteImage(id);
+            ok.push(id);
+          } catch (e) {
+            console.error("Hard delete image failed:", id, e);
+            fail.push(id);
+          }
+        }
+      });
+
+      await Promise.all(workers);
+
+      // Resolve remarks for successfully deleted images
+      const okSet = new Set(ok);
+      for (const it of items) {
+        if (okSet.has(it.id)) {
+          await resolveRemark(it.remarkId, "Approved");
+        }
+      }
+
+      if (!ok.length) {
+        showToast("Hard delete failed.", "error");
+        return;
+      }
+
+      setApprovals((prev) =>
+        prev
+          .map((r) => {
+            if (r.id !== rowId) return r;
+            const nextImages = (r.images || []).filter((im) => !okSet.has(im.id));
+            return { ...r, images: nextImages };
+          })
+          .filter((r) => r.kind === "dataset" || (r.images && r.images.length > 0))
+      );
+
+      setSelected(new Set());
+      setAnchorIndex(null);
+      setImageModal(null);
+      setImageIndex(0);
+
+      showToast(
+        `${ok.length} image${ok.length > 1 ? "s" : ""} permanently deleted.${
+          fail.length ? " Some deletes failed." : ""
+        }`,
+        fail.length ? "error" : "success"
+      );
+    } catch (err) {
+      console.error("Apply decision failed:", err);
+      showToast("Action failed.", "error");
+    }
+  }
+
+  function handleDecisionClick(type, rowId) {
+    if (!confirmShown?.[type]) {
+      setConfirmModal({ type, rowId });
+      return;
+    }
+    applyDecision(type, rowId);
+  }
+
+  /** ---------------------------
+   *  UI components
+   *  -------------------------- */
+  const topBtnStyle = useMemo(
+    () => ({
+      padding: "6px 10px",
+      minWidth: "92px",
+      height: "34px",
+      borderRadius: "10px",
+      backgroundColor: "#E5E7EB",
+      border: "1px solid #C9CED8",
+      cursor: "pointer",
+      fontSize: "13px",
+      fontWeight: 700,
+      userSelect: "none",
+      whiteSpace: "nowrap",
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+    }),
+    []
+  );
 
   function ImageViewer({ images }) {
     const current = images[imageIndex];
@@ -356,13 +881,14 @@ export default function PendingApprovals() {
             }}
           >
             <img
-              src={current?.src}
+              src={current?.src || ""}
               style={{
                 display: "block",
                 maxWidth: "100%",
                 maxHeight: "100%",
                 objectFit: "contain",
                 borderRadius: "0px",
+                backgroundColor: "#fff",
               }}
               alt=""
             />
@@ -434,10 +960,27 @@ export default function PendingApprovals() {
           {shownName}
         </div>
 
-        <div
-          className="flex justify-center items-center gap-[18px]"
-          style={{ marginTop: "12px" }}
-        >
+        {/* Reason (remark.message) for current image */}
+        {current?.remarkMessage && (
+          <div
+            style={{
+              marginTop: "8px",
+              padding: "10px 12px",
+              borderRadius: "12px",
+              backgroundColor: "#F3F4F6",
+              border: "1px solid rgba(0,0,0,0.10)",
+              fontSize: "13px",
+              fontWeight: 700,
+              opacity: 0.85,
+              textAlign: "left",
+              userSelect: "none",
+            }}
+          >
+            Reason: <span style={{ fontWeight: 800 }}>{current.remarkMessage}</span>
+          </div>
+        )}
+
+        <div className="flex justify-center items-center gap-[18px]" style={{ marginTop: "12px" }}>
           <img
             src={prevIcon}
             onClick={(e) => {
@@ -466,26 +1009,96 @@ export default function PendingApprovals() {
     );
   }
 
+  /** ---------------------------
+   *  Confirm modal text
+   *  -------------------------- */
+  const confirmRow = confirmModal
+    ? approvals.find((r) => r.id === confirmModal.rowId)
+    : null;
+
   const confirmTitle =
     confirmModal?.type === "approve" ? "Approve Deletion" : "Deny Deletion";
+
   const confirmDesc =
     confirmModal?.type === "approve"
-      ? "This will remove the image(s) from the dataset."
-      : "This will keep the image(s) in the dataset.";
+      ? confirmRow?.kind === "dataset"
+        ? "This will permanently delete the dataset. This cannot be undone."
+        : "This will permanently delete the selected image(s). This cannot be undone."
+      : "This will deny the request and keep the dataset/image(s).";
 
+  /** ---------------------------
+   *  Render guards
+   *  -------------------------- */
+  if (loading) {
+    return (
+      <div className="w-full datasets-scroll">
+        <h2 className="italic font-[700] text-[28px] mb-[16px]">
+          Pending Approvals for Deletion
+        </h2>
+        <div
+          style={{
+            backgroundColor: "#FFF",
+            width: "100%",
+            maxWidth: "900px",
+            borderRadius: "14px",
+            overflow: "hidden",
+            boxShadow: "0 4px 10px rgba(0,0,0,0.12)",
+            padding: "20px",
+            fontSize: "17px",
+            fontWeight: 700,
+            color: "#444",
+          }}
+        >
+          Loading...
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAllowed) {
+    return (
+      <div className="w-full datasets-scroll">
+        <h2 className="italic font-[700] text-[28px] mb-[16px]">
+          Pending Approvals for Deletion
+        </h2>
+        <div
+          style={{
+            backgroundColor: "#FFF",
+            width: "100%",
+            maxWidth: "900px",
+            borderRadius: "14px",
+            overflow: "hidden",
+            boxShadow: "0 4px 10px rgba(0,0,0,0.12)",
+            padding: "20px",
+            fontSize: "17px",
+            fontWeight: 700,
+            color: "#444",
+          }}
+        >
+          Not authorized.
+        </div>
+      </div>
+    );
+  }
+
+  /** ---------------------------
+   *  Main render
+   *  -------------------------- */
   return (
     <div className="w-full datasets-scroll">
       {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
+        <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
       )}
 
       <h2 className="italic font-[700] text-[28px] mb-[16px]">
         Pending Approvals for Deletion
       </h2>
+
+      {pendingLoading && (
+        <div style={{ marginBottom: "10px", fontSize: "14px", fontWeight: 700, opacity: 0.75 }}>
+          Loading pending deletions...
+        </div>
+      )}
 
       <div
         style={{
@@ -497,6 +1110,7 @@ export default function PendingApprovals() {
           boxShadow: "0 4px 10px rgba(0,0,0,0.12)",
         }}
       >
+        {/* Header (NO Name column anymore) */}
         <div
           className="flex"
           style={{
@@ -506,8 +1120,7 @@ export default function PendingApprovals() {
             fontSize: "16px",
           }}
         >
-          <div className="w-[130px]">Dataset</div>
-          <div className="w-[200px]">Name</div>
+          <div className="w-[220px]">Dataset</div>
           <div className="w-[140px]">Owner</div>
           <div className="w-[160px]">Assigned</div>
           <div className="w-[160px]">Reviewer</div>
@@ -516,7 +1129,7 @@ export default function PendingApprovals() {
         </div>
 
         {approvals.length === 0 && (
-          <div 
+          <div
             style={{
               padding: "20px",
               textAlign: "center",
@@ -524,9 +1137,9 @@ export default function PendingApprovals() {
               fontWeight: 700,
               color: "#444",
             }}
-            >
-              No pending approvals for deletion.
-              </div>
+          >
+            No pending approvals for deletion.
+          </div>
         )}
 
         {approvals.map((r) => (
@@ -545,13 +1158,12 @@ export default function PendingApprovals() {
                 toggleOpen(r.id);
               }}
             >
-              <div className="w-[130px]">{r.dataset}</div>
-              <div className="w-[200px] truncate">{r.name}</div>
+              <div className="w-[220px] truncate">{r.datasetName}</div>
               <div className="w-[140px] truncate">{r.owner}</div>
 
               <div className="w-[160px] truncate">
-                {r.assigned[0]}
-                {r.assigned.length > 1 && (
+                {r.assigned?.[0] || "None"}
+                {r.assigned?.length > 1 && (
                   <span
                     data-block-expand="1"
                     onClick={(e) => {
@@ -567,8 +1179,8 @@ export default function PendingApprovals() {
               </div>
 
               <div className="w-[160px] truncate">
-                {r.reviewer[0]}
-                {r.reviewer.length > 1 && (
+                {r.reviewer?.[0] || "None"}
+                {r.reviewer?.length > 1 && (
                   <span
                     data-block-expand="1"
                     onClick={(e) => {
@@ -583,7 +1195,9 @@ export default function PendingApprovals() {
                 )}
               </div>
 
-              <div className="w-[110px]">{r.images.length}</div>
+              <div className="w-[110px]">
+                {r.kind === "dataset" ? "Dataset" : (r.images?.length || 0)}
+              </div>
 
               <div className="w-[40px] flex justify-center">
                 <img
@@ -591,8 +1205,7 @@ export default function PendingApprovals() {
                   style={{
                     width: "20px",
                     transition: "transform 0.2s",
-                    transform:
-                      openRow === r.id ? "rotate(180deg)" : "rotate(0deg)",
+                    transform: openRow === r.id ? "rotate(180deg)" : "rotate(0deg)",
                     userSelect: "none",
                     pointerEvents: "none",
                   }}
@@ -601,177 +1214,52 @@ export default function PendingApprovals() {
               </div>
             </div>
 
+            {/* Expanded */}
             {openRow === r.id && (
               <div style={{ backgroundColor: "#FFF", padding: "20px" }}>
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "20px",
-                    maxHeight: "calc(100vh - 260px)",
-                    overflowY: "auto",
-                    paddingRight: "10px",
-                  }}
-                >
-                  <ImageViewer images={r.images} />
-
-                  <div className="flex-1" style={{ minWidth: 0 }}>
+                {/* Case 1: DATASET deletion => show remark message(s) */}
+                {r.kind === "dataset" ? (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ display: "flex", flexDirection: "column", gap: "14px" }}
+                  >
                     <div
-                      className="flex items-center justify-between"
-                      style={{ marginBottom: "10px" }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <h3
-                        className="font-semibold text-[18px]"
-                        style={{ whiteSpace: "nowrap" }}
-                      >
-                        Deletion Requests:
-                      </h3>
-
-                      <div className="flex items-center gap-[10px]">
-                        <button
-                          type="button"
-                          onClick={() => selectAll(r.images.length)}
-                          style={topBtnStyle}
-                        >
-                          Select All
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={clearSelection}
-                          style={topBtnStyle}
-                        >
-                          Clear
-                        </button>
-                      </div>
-                    </div>
-
-                    <div
-                      className="datasets-scroll scroll-thin"
                       style={{
-                        maxHeight: "260px",
-                        overflowY: "auto",
-                        paddingRight: "6px",
-                        marginBottom: "16px",
+                        padding: "12px 14px",
+                        borderRadius: "14px",
+                        backgroundColor: "#F3F4F6",
+                        border: "1px solid rgba(0,0,0,0.10)",
+                        fontSize: "14px",
+                        fontWeight: 800,
+                        opacity: 0.9,
                       }}
-                      onClick={(e) => e.stopPropagation()}
                     >
-                      <div className="grid grid-cols-3 gap-[10px]">
-                        {r.images.map((imgObj, index) => {
-                          const isSelected = selected.has(index);
-
-                          return (
-                            <div
-                              key={index}
-                              ref={(el) => (thumbRefs.current[index] = el)}
-                              style={{
-                                position: "relative",
-                                cursor: "pointer",
-                                borderRadius: "10px",
-                                overflow: "hidden",
-                                width: "100%",
-                                aspectRatio: "16 / 9",
-                                backgroundColor: "#F3F4F6",
-                                border: isSelected
-                                  ? "3px solid #44F3C9"
-                                  : index === imageIndex
-                                  ? "2px solid rgba(0,0,0,0.35)"
-                                  : "1px solid rgba(0,0,0,0.14)",
-                                boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-
-                                const isCtrl = e.ctrlKey || e.metaKey;
-                                const isShift = e.shiftKey;
-
-                                setImageIndex(index);
-
-                                if (isShift) {
-                                  const a = anchorIndex ?? index;
-                                  selectRange(a, index, { additive: isCtrl });
-                                  setAnchorIndex(a);
-                                  return;
-                                }
-
-                                if (isCtrl) {
-                                  toggleSelect(index);
-                                  setAnchorIndex(index);
-                                  return;
-                                }
-                              }}
-                              onDoubleClick={(e) => {
-                                e.stopPropagation();
-                                toggleSelect(index);
-                                setAnchorIndex(index);
-                              }}
-                              title="Click: view • Ctrl: toggle select • Shift: range • Ctrl+A: select all • Esc: clear"
-                              aria-selected={isSelected}
-                            >
-                              <img
-                                src={imgObj.src}
-                                draggable={false}
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "cover",
-                                  display: "block",
-                                  userSelect: "none",
-                                }}
-                                alt=""
-                              />
-
-                              {isSelected && (
-                                <div
-                                  style={{
-                                    position: "absolute",
-                                    top: "8px",
-                                    right: "8px",
-                                    width: "22px",
-                                    height: "22px",
-                                    borderRadius: "999px",
-                                    backgroundColor: "#44F3C9",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    boxShadow: "0 6px 12px rgba(0,0,0,0.18)",
-                                    pointerEvents: "none",
-                                    zIndex: 10,
-                                  }}
-                                >
-                                  <span
-                                    style={{
-                                      color: "#0B2A2A",
-                                      fontSize: "14px",
-                                      fontWeight: 900,
-                                      lineHeight: "14px",
-                                    }}
-                                  >
-                                    ✓
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                      Reason{(r.datasetRemarks?.length || 0) > 1 ? "s" : ""}:
+                      <div style={{ marginTop: "10px", fontWeight: 700, opacity: 0.85 }}>
+                        {(r.datasetRemarks || []).map((x, idx) => (
+                          <div
+                            key={x.remarkId || idx}
+                            style={{
+                              padding: "8px 10px",
+                              borderRadius: "12px",
+                              backgroundColor: "#FFF",
+                              border: "1px solid rgba(0,0,0,0.08)",
+                              marginTop: idx === 0 ? 8 : 10,
+                            }}
+                          >
+                            {x.message || "(no message)"}
+                          </div>
+                        ))}
                       </div>
                     </div>
 
-                    <div
-                      className="flex justify-center gap-[60px] mt-[8px] select-none"
-                      onClick={(e) => e.stopPropagation()}
-                    >
+                    <div className="flex justify-center gap-[60px] select-none">
                       <button
                         type="button"
-                        title="Deny Deletion (keep)"
+                        title="Deny Deletion"
                         aria-label="Deny Deletion"
                         onClick={() => handleDecisionClick("deny", r.id)}
-                        style={{
-                          border: "none",
-                          background: "transparent",
-                          cursor: "pointer",
-                          padding: 0,
-                        }}
+                        style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0 }}
                       >
                         <img
                           src={denyIcon}
@@ -787,15 +1275,10 @@ export default function PendingApprovals() {
 
                       <button
                         type="button"
-                        title="Approve deletion (remove)"
-                        aria-label="Approve deletion"
+                        title="Approve Deletion (permanent)"
+                        aria-label="Approve Deletion"
                         onClick={() => handleDecisionClick("approve", r.id)}
-                        style={{
-                          border: "none",
-                          background: "transparent",
-                          cursor: "pointer",
-                          padding: 0,
-                        }}
+                        style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0 }}
                       >
                         <img
                           src={approveIcon}
@@ -809,38 +1292,230 @@ export default function PendingApprovals() {
                         />
                       </button>
                     </div>
-
-                    {selected.size > 0 && (
-                      <div
-                        style={{
-                          marginTop: "10px",
-                          textAlign: "center",
-                          fontSize: "14px",
-                          fontWeight: 800,
-                          opacity: 0.75,
-                          userSelect: "none",
-                        }}
-                      >
-                        {selected.size} selected
-                      </div>
-                    )}
                   </div>
-                </div>
+                ) : (
+                  /* Case 2: IMAGES deletion => show image viewer + grid (each has remark) */
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "20px",
+                      maxHeight: "calc(100vh - 260px)",
+                      overflowY: "auto",
+                      paddingRight: "10px",
+                    }}
+                  >
+                    <ImageViewer images={r.images} />
+
+                    <div className="flex-1" style={{ minWidth: 0 }}>
+                      <div
+                        className="flex items-center justify-between"
+                        style={{ marginBottom: "10px" }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <h3 className="font-semibold text-[18px]" style={{ whiteSpace: "nowrap" }}>
+                          Deletion Requests:
+                        </h3>
+
+                        <div className="flex items-center gap-[10px]">
+                          <button type="button" onClick={() => selectAll(r.images.length)} style={topBtnStyle}>
+                            Select All
+                          </button>
+
+                          <button type="button" onClick={clearSelection} style={topBtnStyle}>
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+
+                      <div
+                        className="datasets-scroll scroll-thin"
+                        style={{
+                          maxHeight: "260px",
+                          overflowY: "auto",
+                          paddingRight: "6px",
+                          marginBottom: "16px",
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="grid grid-cols-3 gap-[10px]">
+                          {r.images.map((img, idx) => {
+                            const isSelected = selected.has(idx);
+
+                            const onClick = (e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+
+                              if (e.shiftKey && anchorIndex !== null) {
+                                selectRange(anchorIndex, idx, { additive: e.ctrlKey || e.metaKey });
+                              } else if (e.ctrlKey || e.metaKey) {
+                                toggleSelect(idx);
+                                setAnchorIndex(idx);
+                              } else {
+                                setSelected(new Set([idx]));
+                                setAnchorIndex(idx);
+                              }
+
+                              setImageIndex(idx);
+                            };
+
+                            return (
+                              <div
+                                key={img.id || idx}
+                                ref={(el) => (thumbRefs.current[idx] = el)}
+                                onClick={onClick}
+                                title={img.remarkMessage ? `Reason: ${img.remarkMessage}` : ""}
+                                style={{
+                                  position: "relative",
+                                  borderRadius: "12px",
+                                  overflow: "hidden",
+                                  cursor: "pointer",
+                                  boxShadow: "0 2px 10px rgba(0,0,0,0.12)",
+                                  border: isSelected ? "2px solid #44F3C9" : "2px solid transparent",
+                                  background: "#fff",
+                                }}
+                              >
+                                <img
+                                  src={img.src || ""}
+                                  style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    objectFit: "cover",
+                                    display: "block",
+                                    userSelect: "none",
+                                    background: "#fff",
+                                  }}
+                                  alt=""
+                                  draggable={false}
+                                />
+
+                                {/* small "reason" dot if there is a message */}
+                                {img.remarkMessage && (
+                                  <div
+                                    style={{
+                                      position: "absolute",
+                                      left: "8px",
+                                      top: "8px",
+                                      width: "10px",
+                                      height: "10px",
+                                      borderRadius: "999px",
+                                      backgroundColor: "#111827",
+                                      opacity: 0.55,
+                                      boxShadow: "0 6px 12px rgba(0,0,0,0.18)",
+                                      pointerEvents: "none",
+                                      zIndex: 10,
+                                    }}
+                                  />
+                                )}
+
+                                {isSelected && (
+                                  <div
+                                    style={{
+                                      position: "absolute",
+                                      top: "8px",
+                                      right: "8px",
+                                      width: "22px",
+                                      height: "22px",
+                                      borderRadius: "999px",
+                                      backgroundColor: "#44F3C9",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      boxShadow: "0 6px 12px rgba(0,0,0,0.18)",
+                                      pointerEvents: "none",
+                                      zIndex: 10,
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        color: "#0B2A2A",
+                                        fontSize: "14px",
+                                        fontWeight: 900,
+                                        lineHeight: "14px",
+                                      }}
+                                    >
+                                      ✓
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div
+                        className="flex justify-center gap-[60px] mt-[8px] select-none"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          title="Deny Deletion"
+                          aria-label="Deny Deletion"
+                          onClick={() => handleDecisionClick("deny", r.id)}
+                          style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0 }}
+                        >
+                          <img
+                            src={denyIcon}
+                            style={{
+                              width: "64px",
+                              height: "64px",
+                              userSelect: "none",
+                              filter: "drop-shadow(0 6px 10px rgba(0,0,0,0.25))",
+                            }}
+                            alt=""
+                          />
+                        </button>
+
+                        <button
+                          type="button"
+                          title="Approve deletion (permanent)"
+                          aria-label="Approve deletion"
+                          onClick={() => handleDecisionClick("approve", r.id)}
+                          style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0 }}
+                        >
+                          <img
+                            src={approveIcon}
+                            style={{
+                              width: "50px",
+                              height: "50.5px",
+                              userSelect: "none",
+                              filter: "drop-shadow(0 6px 10px rgba(0,0,0,0.25))",
+                            }}
+                            alt=""
+                          />
+                        </button>
+                      </div>
+
+                      {selected.size > 0 && (
+                        <div
+                          style={{
+                            marginTop: "10px",
+                            textAlign: "center",
+                            fontSize: "14px",
+                            fontWeight: 800,
+                            opacity: 0.75,
+                            userSelect: "none",
+                          }}
+                        >
+                          {selected.size} selected
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
         ))}
       </div>
 
+      {/* Users popup */}
       {popupUsers && (
         <>
           <div
             className="fixed inset-0"
             onClick={closeUsersPopup}
-            style={{
-              backgroundColor: "rgba(0,0,0,0.7)",
-              zIndex: 10000,
-            }}
+            style={{ backgroundColor: "rgba(0,0,0,0.7)", zIndex: 10000 }}
           />
 
           <div
@@ -855,14 +1530,7 @@ export default function PendingApprovals() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3
-              className="italic"
-              style={{
-                fontWeight: 700,
-                fontSize: "20px",
-                marginBottom: "12px",
-              }}
-            >
+            <h3 className="italic" style={{ fontWeight: 700, fontSize: "20px", marginBottom: "12px" }}>
               Users
             </h3>
 
@@ -902,15 +1570,13 @@ export default function PendingApprovals() {
         </>
       )}
 
+      {/* Confirm modal */}
       {confirmModal && (
         <>
           <div
             className="fixed inset-0"
             onClick={() => setConfirmModal(null)}
-            style={{
-              backgroundColor: "rgba(0,0,0,0.7)",
-              zIndex: 10000,
-            }}
+            style={{ backgroundColor: "rgba(0,0,0,0.7)", zIndex: 10000 }}
           />
 
           <div
@@ -925,14 +1591,7 @@ export default function PendingApprovals() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3
-              className="italic"
-              style={{
-                fontWeight: 700,
-                fontSize: "20px",
-                marginBottom: "10px",
-              }}
-            >
+            <h3 className="italic" style={{ fontWeight: 700, fontSize: "20px", marginBottom: "10px" }}>
               {confirmTitle}
             </h3>
 
@@ -940,22 +1599,13 @@ export default function PendingApprovals() {
               {confirmDesc}
             </div>
 
-            <div
-              style={{
-                marginTop: "10px",
-                fontSize: "13px",
-                fontWeight: 700,
-                opacity: 0.75,
-              }}
-            >
-              If you selected images, the action applies to all selected. Otherwise
-              it applies to the current image.
-            </div>
+            {confirmModal?.type === "approve" && confirmRow?.kind === "images" && (
+              <div style={{ marginTop: "10px", fontSize: "13px", fontWeight: 700, opacity: 0.75 }}>
+                If you selected images, the action applies to all selected. Otherwise it applies to the current image.
+              </div>
+            )}
 
-            <div
-              className="flex justify-between gap-[14px]"
-              style={{ marginTop: "18px" }}
-            >
+            <div className="flex justify-between gap-[14px]" style={{ marginTop: "18px" }}>
               <button
                 type="button"
                 onClick={() => setConfirmModal(null)}
@@ -1003,6 +1653,7 @@ export default function PendingApprovals() {
         </>
       )}
 
+      {/* Image modal */}
       {imageModal &&
         createPortal(
           <div
@@ -1137,7 +1788,7 @@ export default function PendingApprovals() {
               </div>
 
               <img
-                src={imageModal.images[imageModal.index]?.src}
+                src={imageModal.images?.[imageModal.index]?.src || ""}
                 draggable={false}
                 style={{
                   width: "100%",
@@ -1175,6 +1826,6 @@ export default function PendingApprovals() {
           </div>,
           document.body
         )}
-    </div>
-  );
+    </div>
+  );
 }

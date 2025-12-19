@@ -168,7 +168,6 @@ const Overview = () => {
                
         await deleteDatasetLabel(datasetId);
           
-        await hard_Delete_Dataset(datasetId);
         }
 
         if (!loading && authType === "guest") {
