@@ -257,7 +257,6 @@ export default function PendingApprovals() {
 
           try {
             const remarks = await getAllRemarks(datasetId);
-            console.log(remarks)
             const list = Array.isArray(remarks) ? remarks : [];
 
             const pending = list.filter(isPendingDeletionRemark);
@@ -537,6 +536,7 @@ export default function PendingApprovals() {
           try {
             const res = await getSignedUrl(img.id);
             const url = res?.url || res;
+            console.log("dd")
             if (!url || cancelled) continue;
 
             setApprovals((prev) =>

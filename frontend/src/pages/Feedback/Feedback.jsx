@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import expandIcon from "../../assets/feedback/expand-details.png";
@@ -6,38 +6,577 @@ import minimizeIcon from "../../assets/feedback/minimize-details.png";
 import maximizeIcon from "../../assets/feedback/maximize.png";
 import editIcon from "../../assets/feedback/edit.png";
 
-import img1 from "../../assets/feedback/008.png";
-import img2 from "../../assets/feedback/annotated.png";
-
 import prevIcon from "../../assets/feedback/previous_image.png";
 import nextIcon from "../../assets/feedback/next_image.png";
 
 import Toast from "../Annotation/components/Toast";
 
+import { AuthContext } from "../../components/AuthContext";
+import { getAllDatasets } from "../../services/datasetService";
+import { getAllUsers } from "../../services/authService";
+import { parseAssignedTo } from "../../utils/utils";
+import { getSignedUrl, listImages } from "../../services/ImageService";
+import { getAllRemarks, updateRemark } from "../../services/remarkService";
+
+/** ---------------------------
+ *  Small utils
+ *  -------------------------- */
+function clamp(n, a, b) {
+  return Math.max(a, Math.min(b, n));
+}
+
+function safeStr(v) {
+  return v == null ? "" : String(v);
+}
+
+function toId(v) {
+  return v == null ? "" : String(v);
+}
+
+function getFileNameFromSrc(src) {
+  if (!src) return "";
+  try {
+    const clean = String(src).split("?")[0].split("#")[0];
+    const parts = clean.split("/");
+    return parts[parts.length - 1] || "";
+  } catch {
+    return "";
+  }
+}
+
+function isFeedbackRemark(r) {
+  return r?.feedback === true;
+}
+
+function isOpenRequestRemark(r) {
+  // status false => annotator asked feedback (open)
+  return isFeedbackRemark(r) && r?.status === false;
+}
+
+function isAnsweredFeedbackRemark(r) {
+  // status true => reviewer replied (closed)
+  return isFeedbackRemark(r) && r?.status === true;
+}
+
+async function runPool(items, limit, worker) {
+  const results = [];
+  const queue = [...items];
+  const runners = new Array(Math.max(1, limit)).fill(0).map(async () => {
+    while (queue.length) {
+      const it = queue.shift();
+      try {
+        const out = await worker(it);
+        if (out !== undefined) results.push(out);
+      } catch (e) {
+        // non-fatal; worker should log if needed
+      }
+    }
+  });
+  await Promise.all(runners);
+  return results;
+}
+
+/** ---------------------------
+ *  Component
+ *  -------------------------- */
 export default function Feedback() {
-  // const DEMO_USER = { username: "anthony", role: "annotator" };
-  const DEMO_USER = { username: "john", role: "annotator" };
-  // const DEMO_USER = { username: "timothy", role: "reviewer" };
-  // const DEMO_USER = { username: "jim", role: "reviewer" };
+  const { currentUser, authType, loading } = useContext(AuthContext);
 
-  const isReviewer = DEMO_USER.role === "reviewer";
-  const isAnnotator = DEMO_USER.role === "annotator";
+  const isAllowed = !loading && authType === "user" && !!currentUser;
 
-  const [openRow, setOpenRow] = useState(null);
-  const [openReceivedRow, setOpenReceivedRow] = useState(null);
-  const [requestIndex, setRequestIndex] = useState(0);
-
-  const [popupUsers, setPopupUsers] = useState(null);
-
-  const [imageModal, setImageModal] = useState(null);
-  const ignoreCloseUntilRef = useRef(0);
-
+  /** ---------------------------
+   *  UI state
+   *  -------------------------- */
   const [toast, setToast] = useState(null);
   function showToast(message, type = "success") {
     setToast(null);
     requestAnimationFrame(() => setToast({ message, type }));
   }
 
+  const [openRow, setOpenRow] = useState(null); // datasetId
+  const [openReceivedRow, setOpenReceivedRow] = useState(null); // datasetId
+  const [requestIndex, setRequestIndex] = useState(0);
+
+  const [popupUsers, setPopupUsers] = useState(null);
+  function openUsersPopup(list) {
+    setPopupUsers(list);
+  }
+  function closeUsersPopup() {
+    setPopupUsers(null);
+  }
+
+  /** Image modal */
+  const [imageModal, setImageModal] = useState(null); // { images:[{src, filename, datasetId, imageId}], index }
+  const ignoreCloseUntilRef = useRef(0);
+  function openImageModal(images, index) {
+    ignoreCloseUntilRef.current = Date.now() + 250;
+    setImageModal({ images, index });
+  }
+  function closeImageModal() {
+    setImageModal(null);
+  }
+  function guardedCloseImageModal() {
+    if (Date.now() < ignoreCloseUntilRef.current) return;
+    closeImageModal();
+  }
+  function prevModal() {
+    setImageModal((m) => {
+      if (!m) return m;
+      const max = m.images.length;
+      const nextIdx = m.index === 0 ? max - 1 : m.index - 1;
+      return { ...m, index: nextIdx };
+    });
+  }
+  function nextModal() {
+    setImageModal((m) => {
+      if (!m) return m;
+      const max = m.images.length;
+      const nextIdx = m.index === max - 1 ? 0 : m.index + 1;
+      return { ...m, index: nextIdx };
+    });
+  }
+
+  /** ---------------------------
+   *  Data state
+   *  -------------------------- */
+  // openRequests: [{ id:datasetId, dataset, name, owner, assigned:[...], reviewer:[...], requests:[{remarkId,imageId,image,filename,question,createdAt}] }]
+  const [openRequests, setOpenRequests] = useState([]);
+
+  // feedbackStore: [{ datasetId, dataset, name, entries:[{remarkId,imageId,image,filename,question,feedback,reviewer,annotator,createdAt}] }]
+  const [feedbackStore, setFeedbackStore] = useState([]);
+
+  const [pageLoading, setPageLoading] = useState(false);
+
+  // refs for quick lookup
+  const dsMetaRef = useRef(new Map()); // datasetId -> { ds, assignedNames, reviewerNames, ownerName, roleMap }
+  const userMapRef = useRef(new Map()); // userId -> username
+  const fileNameMapRef = useRef(new Map()); // key datasetId:imageId -> filename
+  const urlCacheRef = useRef(new Map()); // key datasetId:imageId -> signedUrl
+
+  const hasReviewerDatasets = useMemo(() => {
+    if (!currentUser?.id) return false;
+    const uid = String(currentUser.id);
+    for (const meta of dsMetaRef.current.values()) {
+      const role = meta?.roleMap?.[uid];
+      if (role === "reviewer") return true;
+    }
+    return false;
+  }, [currentUser?.id, openRequests.length, feedbackStore.length]); // triggers after load
+
+  const hasAnnotatorDatasets = useMemo(() => {
+    if (!currentUser?.id) return false;
+    const uid = String(currentUser.id);
+    for (const meta of dsMetaRef.current.values()) {
+      const role = meta?.roleMap?.[uid];
+      if (role === "annotator") return true;
+    }
+    return false;
+  }, [currentUser?.id, openRequests.length, feedbackStore.length]);
+
+  function roleInDataset(datasetId) {
+    const meta = dsMetaRef.current.get(String(datasetId));
+    if (!meta || !currentUser?.id) return null;
+    return meta.roleMap?.[String(currentUser.id)] || null;
+  }
+
+  function canSeeDatasetId(datasetId) {
+    const meta = dsMetaRef.current.get(String(datasetId));
+    if (!meta) return false;
+
+    // allow admins to see everything
+    if (currentUser?.role === "admin") return true;
+
+    const uid = String(currentUser?.id || "");
+    if (!uid) return false;
+
+    if (String(meta.ds?.createdBy || "") === uid) return true;
+
+    const role = meta.roleMap?.[uid];
+    return role === "annotator" || role === "reviewer";
+  }
+
+  /** ---------------------------
+   *  Load data (real integration)
+   *  -------------------------- */
+  useEffect(() => {
+    if (!isAllowed) return;
+
+    let cancelled = false;
+
+    async function load() {
+      setPageLoading(true);
+      try {
+        const [datasetsRes, usersRes] = await Promise.all([
+          getAllDatasets(),
+          getAllUsers(),
+        ]);
+
+        const datasets = Array.isArray(datasetsRes)
+          ? datasetsRes
+          : datasetsRes?.data || datasetsRes?.items || [];
+
+        const users = Array.isArray(usersRes)
+          ? usersRes
+          : usersRes?.data || usersRes?.items || [];
+
+        const userMap = new Map();
+        for (const u of users || []) {
+          const id = toId(u?.id);
+          if (!id) continue;
+          userMap.set(id, safeStr(u?.username || u?.email || id));
+        }
+        userMapRef.current = userMap;
+
+        const dsMeta = new Map();
+        for (const ds of datasets || []) {
+          const dsId = toId(ds?.id);
+          if (!dsId) continue;
+
+          const roleMap = parseAssignedTo(ds?.assignedTo || []); // { [userId]: "annotator"|"reviewer" }
+          const assignedNames = [];
+          const reviewerNames = [];
+
+          Object.entries(roleMap || {}).forEach(([uid, role]) => {
+            const name = userMap.get(String(uid)) || String(uid);
+            if (role === "annotator") assignedNames.push(name);
+            if (role === "reviewer") reviewerNames.push(name);
+          });
+
+          const ownerName = userMap.get(toId(ds?.createdBy)) || "Admin";
+
+          dsMeta.set(dsId, {
+            ds,
+            assignedNames,
+            reviewerNames,
+            ownerName,
+            roleMap: roleMap || {},
+          });
+        }
+
+        dsMetaRef.current = dsMeta;
+
+        // only fetch remarks for datasets the current user can see (or admin)
+        const visibleDatasetIds = Array.from(dsMeta.keys()).filter((dsId) => {
+          if (currentUser?.role === "admin") return true;
+          const meta = dsMeta.get(dsId);
+          const uid = String(currentUser?.id || "");
+          if (!uid || !meta) return false;
+          if (String(meta.ds?.createdBy || "") === uid) return true;
+          const role = meta.roleMap?.[uid];
+          return role === "annotator" || role === "reviewer";
+        });
+
+        // fetch remarks per dataset (pool to avoid spamming)
+        const remarksByDataset = new Map();
+        await runPool(visibleDatasetIds, 6, async (datasetId) => {
+          const res = await getAllRemarks(datasetId);
+          const list = Array.isArray(res) ? res : res?.data || res?.items || [];
+          remarksByDataset.set(String(datasetId), list);
+        });
+
+        // build maps of open requests + answered feedback
+        const openMap = new Map(); // datasetId -> request[]
+        const answeredMap = new Map(); // datasetId -> entry[]
+        const datasetsNeedingImageNames = new Set();
+
+        for (const [datasetId, remarks] of remarksByDataset.entries()) {
+          const meta = dsMeta.get(String(datasetId));
+          if (!meta) continue;
+
+          for (const r of remarks || []) {
+            if (!isFeedbackRemark(r)) continue;
+
+            const imageId = safeStr(r?.imageId).trim();
+            const remarkId = toId(r?.id || r?._id);
+            const createdAt = r?.createdAt || r?.updatedAt || null;
+
+            if (isOpenRequestRemark(r)) {
+              if (!imageId) continue;
+              datasetsNeedingImageNames.add(String(datasetId));
+
+              const req = {
+                remarkId,
+                datasetId: String(datasetId),
+                imageId,
+                image: null,
+                filename: null,
+                question: safeStr(r?.message),
+                createdAt,
+              };
+
+              if (!openMap.has(String(datasetId))) openMap.set(String(datasetId), []);
+              openMap.get(String(datasetId)).push(req);
+            }
+
+            if (isAnsweredFeedbackRemark(r)) {
+              if (!imageId) continue;
+              datasetsNeedingImageNames.add(String(datasetId));
+
+              const entry = {
+                remarkId,
+                datasetId: String(datasetId),
+                imageId,
+                image: null,
+                filename: null,
+                question: safeStr(r?.message),
+                feedback: safeStr(r?.reply),
+                reviewer: (meta.reviewerNames?.[0] || "Reviewer"),
+                annotator: (meta.assignedNames?.[0] || "Annotator"),
+                createdAt,
+              };
+
+              if (!answeredMap.has(String(datasetId))) answeredMap.set(String(datasetId), []);
+              answeredMap.get(String(datasetId)).push(entry);
+            }
+          }
+        }
+
+        // resolve filenames (listImages) only for datasets that actually have feedback remarks
+        const fileNameMap = new Map(fileNameMapRef.current); // keep old
+        await runPool(Array.from(datasetsNeedingImageNames), 4, async (datasetId) => {
+          try {
+            const res = await listImages(datasetId);
+            const list = Array.isArray(res) ? res : res?.items || res?.images || res?.data || [];
+            for (const img of list || []) {
+              const imgId = toId(img?.id);
+              if (!imgId) continue;
+              const fn = safeStr(img?.fileName || img?.filename || img?.name || "");
+              if (!fn) continue;
+              fileNameMap.set(`${datasetId}:${imgId}`, fn);
+            }
+          } catch (e) {
+            // optional
+          }
+        });
+        fileNameMapRef.current = fileNameMap;
+
+        // apply filenames into request/entry objects
+        function applyFilenames(items) {
+          return (items || []).map((it) => {
+            const fn = fileNameMap.get(`${it.datasetId}:${it.imageId}`) || it.filename || `image_${it.imageId}`;
+            return { ...it, filename: fn };
+          });
+        }
+
+        const openRows = [];
+        for (const [datasetId, reqs] of openMap.entries()) {
+          const meta = dsMeta.get(String(datasetId));
+          if (!meta) continue;
+          openRows.push({
+            id: String(datasetId),
+            datasetId: String(datasetId),
+            dataset: safeStr(meta.ds?.name || `Dataset ${datasetId}`),
+            name: safeStr(meta.ds?.fileName || meta.ds?.zipName || meta.ds?.name || ""),
+            owner: meta.ownerName || "Admin",
+            assigned: meta.assignedNames || [],
+            reviewer: meta.reviewerNames || [],
+            requests: applyFilenames(reqs).sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || ""))),
+          });
+        }
+        // stable ordering
+        openRows.sort((a, b) => a.dataset.localeCompare(b.dataset));
+
+        const feedbackGroups = [];
+        for (const [datasetId, entries] of answeredMap.entries()) {
+          const meta = dsMeta.get(String(datasetId));
+          if (!meta) continue;
+
+          feedbackGroups.push({
+            datasetId: String(datasetId),
+            dataset: safeStr(meta.ds?.name || `Dataset ${datasetId}`),
+            name: safeStr(meta.ds?.fileName || meta.ds?.zipName || meta.ds?.name || ""),
+            entries: applyFilenames(entries).sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || ""))),
+          });
+        }
+        feedbackGroups.sort((a, b) => a.dataset.localeCompare(b.dataset));
+
+        if (cancelled) return;
+        setOpenRequests(openRows);
+        setFeedbackStore(feedbackGroups);
+
+        // reset row opens if they no longer exist
+        setOpenRow((prev) => (prev && openRows.some((x) => x.id === prev) ? prev : null));
+        setOpenReceivedRow((prev) =>
+          prev && feedbackGroups.some((x) => x.datasetId === prev) ? prev : null
+        );
+        setRequestIndex(0);
+      } catch (e) {
+        console.error("Failed to load feedback data:", e);
+        if (!cancelled) showToast("Failed to load feedback.", "error");
+      } finally {
+        if (!cancelled) setPageLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAllowed, currentUser?.id, currentUser?.role]);
+
+  /** ---------------------------
+   *  Lazy image signed URLs
+   *  -------------------------- */
+  async function ensureSignedUrl(datasetId, imageId) {
+    const key = `${datasetId}:${imageId}`;
+    if (urlCacheRef.current.has(key)) return urlCacheRef.current.get(key);
+
+    try {
+      const res = await getSignedUrl(imageId);
+      const url = typeof res === "string" ? res: res?.url
+      
+      if (url) urlCacheRef.current.set(key, url);
+      return url || null;
+    } catch (e) {
+      console.warn("getSignedUrl failed:", imageId, e);
+      return null;
+    }
+  }
+
+  function patchRequestImage(datasetId, imageId, url) {
+    // open requests
+    setOpenRequests((prev) =>
+      prev.map((ds) => {
+        if (String(ds.id) !== String(datasetId)) return ds;
+        const nextReqs = (ds.requests || []).map((r) =>
+          String(r.imageId) === String(imageId) ? { ...r, image: url } : r
+        );
+        return { ...ds, requests: nextReqs };
+      })
+    );
+
+    // answered feedback entries
+    setFeedbackStore((prev) =>
+      prev.map((g) => {
+        if (String(g.datasetId) !== String(datasetId)) return g;
+        const nextEntries = (g.entries || []).map((e) =>
+          String(e.imageId) === String(imageId) ? { ...e, image: url } : e
+        );
+        return { ...g, entries: nextEntries };
+      })
+    );
+
+    // modal
+    setImageModal((m) => {
+      if (!m) return m;
+      const nextImages = (m.images || []).map((it) => {
+        if (String(it.datasetId) === String(datasetId) && String(it.imageId) === String(imageId)) {
+          return { ...it, src: url };
+        }
+        return it;
+      });
+      return { ...m, images: nextImages };
+    });
+  }
+
+  // when openRow/requestIndex changes -> ensure current image url
+  useEffect(() => {
+    if (!openRow) return;
+    const ds = openRequests.find((x) => String(x.id) === String(openRow));
+    if (!ds) return;
+
+    const idx = clamp(requestIndex, 0, Math.max(0, (ds.requests?.length || 1) - 1));
+    const req = ds.requests?.[idx];
+    if (!req || req.image) return;
+
+    let cancelled = false;
+    ensureSignedUrl(ds.datasetId, req.imageId).then((url) => {
+      if (cancelled) return;
+      if (url) patchRequestImage(ds.datasetId, req.imageId, url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [openRow, requestIndex, openRequests]);
+
+  // when openReceivedRow/requestIndex changes -> ensure current image url
+  useEffect(() => {
+    if (!openReceivedRow) return;
+    const g = feedbackStore.find((x) => String(x.datasetId) === String(openReceivedRow));
+    if (!g) return;
+
+    const idx = clamp(requestIndex, 0, Math.max(0, (g.entries?.length || 1) - 1));
+    const entry = g.entries?.[idx];
+    if (!entry || entry.image) return;
+
+    let cancelled = false;
+    ensureSignedUrl(g.datasetId, entry.imageId).then((url) => {
+      if (cancelled) return;
+      if (url) patchRequestImage(g.datasetId, entry.imageId, url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [openReceivedRow, requestIndex, feedbackStore]);
+
+  // when modal open/changes -> ensure modal current src
+  useEffect(() => {
+    if (!imageModal) return;
+    const cur = imageModal.images?.[imageModal.index];
+    if (!cur || cur.src) return;
+    if (!cur.datasetId || !cur.imageId) return;
+
+    let cancelled = false;
+    ensureSignedUrl(cur.datasetId, cur.imageId).then((url) => {
+      if (cancelled) return;
+      if (url) patchRequestImage(cur.datasetId, cur.imageId, url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [imageModal]);
+
+  /** ---------------------------
+   *  Keyboard shortcuts
+   *  -------------------------- */
+  useEffect(() => {
+    function handleKey(e) {
+      if (e.key === "Escape") {
+        if (imageModal) {
+          closeImageModal();
+          return;
+        }
+        if (popupUsers) {
+          closeUsersPopup();
+          return;
+        }
+        return;
+      }
+
+      if (imageModal) {
+        if (e.key === "ArrowRight" || e.key === "ArrowLeft") e.preventDefault();
+        if (e.key === "ArrowRight") nextModal();
+        if (e.key === "ArrowLeft") prevModal();
+        return;
+      }
+
+      // open row navigation
+      const anyOpen = openRow || openReceivedRow;
+      if (!anyOpen) return;
+
+      let max = 0;
+      if (openRow) {
+        const ds = openRequests.find((x) => String(x.id) === String(openRow));
+        max = ds?.requests?.length || 0;
+      }
+      if (openReceivedRow) {
+        const g = feedbackStore.find((x) => String(x.datasetId) === String(openReceivedRow));
+        max = g?.entries?.length || 0;
+      }
+      if (!max) return;
+
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") e.preventDefault();
+      if (e.key === "ArrowRight") setRequestIndex((i) => (i + 1) % max);
+      if (e.key === "ArrowLeft") setRequestIndex((i) => (i - 1 + max) % max);
+    }
+
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [openRow, openReceivedRow, imageModal, popupUsers, openRequests, feedbackStore]);
+
+  /** ---------------------------
+   *  Send / Edit feedback (backend)
+   *  -------------------------- */
   const [editTarget, setEditTarget] = useState(null); // { datasetId, index }
   const [editValue, setEditValue] = useState("");
   const editTextareaRef = useRef(null);
@@ -54,343 +593,182 @@ export default function Feedback() {
     requestAnimationFrame(autoSizeEditTextarea);
   }, [editTarget]);
 
-  function openUsersPopup(list) {
-    setPopupUsers(list);
+  function startEdit(datasetId, index, currentText) {
+    setEditTarget({ datasetId: String(datasetId), index });
+    setEditValue(currentText || "");
   }
-  function closeUsersPopup() {
-    setPopupUsers(null);
-  }
-
-  function getFileNameFromSrc(src) {
-    if (!src) return "";
-    try {
-      const clean = String(src).split("?")[0].split("#")[0];
-      const parts = clean.split("/");
-      return parts[parts.length - 1] || "";
-    } catch {
-      return "";
-    }
-  }
-
-  function openImageModal(images, index) {
-    ignoreCloseUntilRef.current = Date.now() + 250;
-    setImageModal({ images, index });
-  }
-
-  function closeImageModal() {
-    setImageModal(null);
-  }
-
-  function guardedCloseImageModal() {
-    if (Date.now() < ignoreCloseUntilRef.current) return;
-    closeImageModal();
-  }
-
-  function prevModal() {
-    setImageModal((m) => {
-      if (!m) return m;
-      const max = m.images.length;
-      const nextIdx = m.index === 0 ? max - 1 : m.index - 1;
-      setRequestIndex(nextIdx);
-      return { ...m, index: nextIdx };
-    });
-  }
-
-  function nextModal() {
-    setImageModal((m) => {
-      if (!m) return m;
-      const max = m.images.length;
-      const nextIdx = m.index === max - 1 ? 0 : m.index + 1;
-      setRequestIndex(nextIdx);
-      return { ...m, index: nextIdx };
-    });
-  }
-
-  const [openRequests, setOpenRequests] = useState([
-    {
-      id: 1,
-      dataset: "Dataset1182",
-      name: "SchistoH_urine.zip",
-      owner: "anthony",
-      assigned: ["john", "timothy"],
-      reviewer: ["jim", "alex", "marc"],
-      requests: [
-        {
-          image: img1,
-          filename: "008.png",
-          question: "Do I have to annotate very small objects?",
-        },
-        {
-          image: img2,
-          filename: "annotated.png",
-          question: "Should I separate eggs that overlap?",
-        },
-      ],
-    },
-
-    {
-      id: 2,
-      dataset: "Dataset155",
-      name: "Ascaris_stool.zip",
-      owner: "anthony",
-      assigned: ["anthony"],
-      reviewer: ["timothy", "marc"],
-      requests: [
-        {
-          image: img1,
-          filename: "008.png",
-          question: "Should I include partially visible eggs?",
-        },
-        {
-          image: img2,
-          filename: "annotated.png",
-          question: "Do I have to annotate broken eggs?",
-        },
-        {
-          image: img1,
-          filename: "008.png",
-          question: "Do these count as eggs or artifacts?",
-        },
-      ],
-    },
-  ]);
-
-  const [feedbackStore, setFeedbackStore] = useState([]);
-
-  function canSeeDataset(r) {
-    if (!r) return false;
-    if (isReviewer) return (r.reviewer || []).includes(DEMO_USER.username);
-    return (
-      (r.assigned || []).includes(DEMO_USER.username) ||
-      r.owner === DEMO_USER.username
-    );
-  }
-
-  const visibleOpenRequests = openRequests.filter(canSeeDataset);
-
-  function visibleFeedbackGroups() {
-    const groups = (feedbackStore || []).filter((g) => {
-      const anyEntry = g.entries?.[0];
-      if (!anyEntry) return false;
-
-      if (isReviewer) {
-        return g.entries.some((e) => e.reviewer === DEMO_USER.username);
-      }
-      return g.entries.some((e) => e.annotator === DEMO_USER.username);
-    });
-
-    return groups
-      .map((g) => {
-        const filteredEntries = isReviewer
-          ? g.entries.filter((e) => e.reviewer === DEMO_USER.username)
-          : g.entries.filter((e) => e.annotator === DEMO_USER.username);
-
-        return { ...g, entries: filteredEntries };
-      })
-      .filter((g) => g.entries.length > 0);
-  }
-
-  const visibleFeedback = visibleFeedbackGroups();
-
-  useEffect(() => {
-    function handleKey(e) {
-      if (e.key === "Escape" && imageModal) {
-        closeImageModal();
-        return;
-      }
-
-      if (imageModal) {
-        if (e.key === "ArrowRight") nextModal();
-        if (e.key === "ArrowLeft") prevModal();
-        return;
-      }
-
-      const isOpen = openRow || openReceivedRow;
-      if (!isOpen) return;
-
-      let max = 0;
-
-      if (openRow) {
-        const r = visibleOpenRequests.find((x) => x.id === openRow);
-        if (!r) return;
-        max = r.requests.length;
-      }
-
-      if (openReceivedRow) {
-        const r = visibleFeedback.find((x) => x.datasetId === openReceivedRow);
-        if (!r) return;
-        max = r.entries.length;
-      }
-
-      if (max === 0) return;
-
-      if (e.key === "ArrowRight") nextRequest(max);
-      if (e.key === "ArrowLeft") prevRequest(max);
-    }
-
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [openRow, openReceivedRow, visibleOpenRequests, visibleFeedback, imageModal]);
-
-  useEffect(() => {
-    if (!editTarget) return;
-    setEditTarget(null);
-    setEditValue("");
-  }, [openReceivedRow, requestIndex]);
-
-  function toggleOpen(id) {
-    if (openRow === id) return setOpenRow(null);
-    setRequestIndex(0);
-    setOpenRow(id);
-    setOpenReceivedRow(null);
-  }
-
-  function toggleReceived(id) {
-    if (openReceivedRow === id) return setOpenReceivedRow(null);
-    setRequestIndex(0);
-    setOpenReceivedRow(id);
-    setOpenRow(null);
-  }
-
-  function prevRequest(max) {
-    setRequestIndex((i) => (i === 0 ? max - 1 : i - 1));
-  }
-
-  function nextRequest(max) {
-    setRequestIndex((i) => (i === max - 1 ? 0 : i + 1));
-  }
-
-  function sendFeedback(datasetId, text) {
-    if (!isReviewer) {
-      showToast("Error: only reviewers can send feedback.", "error");
-      return;
-    }
-    if (!text.trim()) {
-      showToast("Error: feedback is empty.", "error");
-      return;
-    }
-
-    const ds = openRequests.find((x) => x.id === datasetId);
-    if (!ds) {
-      showToast("Error: dataset not found.", "error");
-      return;
-    }
-
-    const safeIdx = Math.min(requestIndex, Math.max(0, ds.requests.length - 1));
-    const req = ds.requests[safeIdx];
-    if (!req) {
-      showToast("Error: request not found.", "error");
-      return;
-    }
-
-    const reviewerGivingFeedback = DEMO_USER.username;
-    const annotatorAsking = ds.assigned?.[0] ?? "";
-
-    setFeedbackStore((prev) => {
-      const found = prev.find((p) => p.datasetId === ds.id);
-
-      const entryToAdd = {
-        image: req.image,
-        filename: req.filename || getFileNameFromSrc(req.image),
-        question: req.question,
-        feedback: text,
-        reviewer: reviewerGivingFeedback,
-        annotator: annotatorAsking,
-      };
-
-      if (found) {
-        return prev.map((p) =>
-          p.datasetId === ds.id ? { ...p, entries: [...p.entries, entryToAdd] } : p
-        );
-      }
-
-      return [
-        ...prev,
-        {
-          datasetId: ds.id,
-          dataset: ds.dataset,
-          name: ds.name,
-          entries: [entryToAdd],
-        },
-      ];
-    });
-
-    setOpenRequests((prev) => {
-      const next = prev
-        .map((item) => {
-          if (item.id !== datasetId) return item;
-
-          const newReqs = item.requests.filter((_, idx) => idx !== safeIdx);
-          return { ...item, requests: newReqs };
-        })
-        .filter((x) => x.requests.length > 0);
-
-      const stillExists = next.some((x) => x.id === datasetId);
-      if (!stillExists) setOpenRow(null);
-
-      setRequestIndex(0);
-
-      return next;
-    });
-
-    const box = document.getElementById(`fb-${datasetId}`);
-    if (box) box.value = "";
-
-    showToast("Feedback sent.", "success");
-  }
-
-  function startEdit(datasetId, index, currentFeedback) {
-    if (!isReviewer) return;
-    setEditTarget({ datasetId, index });
-    setEditValue(String(currentFeedback ?? ""));
-  }
-
   function cancelEdit() {
     setEditTarget(null);
     setEditValue("");
   }
 
-  function saveEdit() {
-    if (!isReviewer) return;
-    if (!editTarget) return;
-
-    const nextText = String(editValue ?? "");
-    if (!nextText.trim()) {
-      showToast("Error: feedback is empty.", "error");
+  async function sendFeedbackForDataset(datasetId) {
+    const ds = openRequests.find((x) => String(x.id) === String(datasetId));
+    if (!ds) {
+      showToast("Error: dataset not found.", "error");
       return;
     }
 
-    const { datasetId, index } = editTarget;
+    const role = roleInDataset(datasetId);
+    if (role !== "reviewer" && currentUser?.role !== "admin") {
+      showToast("Only reviewers can send feedback.", "error");
+      return;
+    }
 
-    setFeedbackStore((prev) =>
-      prev.map((g) => {
-        if (g.datasetId !== datasetId) return g;
-        const nextEntries = (g.entries || []).map((e, i) =>
-          i === index ? { ...e, feedback: nextText } : e
-        );
-        return { ...g, entries: nextEntries };
-      })
-    );
+    const safeIdx = clamp(requestIndex, 0, Math.max(0, (ds.requests?.length || 1) - 1));
+    const req = ds.requests?.[safeIdx];
+    if (!req) {
+      showToast("Error: request not found.", "error");
+      return;
+    }
 
-    cancelEdit();
-    showToast("Feedback updated.", "success");
+    const box = document.getElementById(`fb-${datasetId}`);
+    const text = safeStr(box?.value).trim();
+
+    if (!text) {
+      showToast("Please enter feedback first.", "error");
+      return;
+    }
+
+    try {
+      await updateRemark(req.remarkId, { status: true, reply: text });
+
+      // move request -> feedbackStore locally (keep UI snappy)
+      const meta = dsMetaRef.current.get(String(datasetId));
+      const reviewerLabel = safeStr(currentUser?.username || meta?.reviewerNames?.[0] || "Reviewer");
+      const annotatorLabel = safeStr(meta?.assignedNames?.[0] || "Annotator");
+
+      const newEntry = {
+        remarkId: req.remarkId,
+        datasetId: String(datasetId),
+        imageId: req.imageId,
+        image: req.image,
+        filename: req.filename || getFileNameFromSrc(req.image),
+        question: req.question,
+        feedback: text,
+        reviewer: reviewerLabel,
+        annotator: annotatorLabel,
+        createdAt: req.createdAt,
+      };
+
+      setFeedbackStore((prev) => {
+        const found = prev.find((g) => String(g.datasetId) === String(datasetId));
+        if (found) {
+          return prev.map((g) =>
+            String(g.datasetId) === String(datasetId)
+              ? { ...g, entries: [...(g.entries || []), newEntry] }
+              : g
+          );
+        }
+        return [...prev, { datasetId: String(datasetId), dataset: ds.dataset, name: ds.name, entries: [newEntry] }];
+      });
+
+      setOpenRequests((prev) => {
+        const next = prev
+          .map((d) => {
+            if (String(d.id) !== String(datasetId)) return d;
+            const nextReqs = (d.requests || []).filter((_, i) => i !== safeIdx);
+            return { ...d, requests: nextReqs };
+          })
+          .filter((d) => (d.requests || []).length > 0);
+
+        const stillExists = next.some((x) => String(x.id) === String(datasetId));
+        if (!stillExists) setOpenRow(null);
+        setRequestIndex(0);
+
+        return next;
+      });
+
+      if (box) box.value = "";
+      showToast("Feedback sent.", "success");
+    } catch (e) {
+      console.error("Failed to send feedback:", e);
+      showToast("Failed to send feedback.", "error");
+    }
+  }
+
+  async function saveEdit(datasetId, index, remarkId) {
+    const nextText = safeStr(editValue).trim();
+    if (!nextText) {
+      showToast("Feedback cannot be empty.", "error");
+      return;
+    }
+
+    const role = roleInDataset(datasetId);
+    if (role !== "reviewer" && currentUser?.role !== "admin") {
+      showToast("Only reviewers can edit feedback.", "error");
+      return;
+    }
+
+    try {
+      await updateRemark(remarkId, { status: true, reply: nextText });
+
+      setFeedbackStore((prev) =>
+        prev.map((g) => {
+          if (String(g.datasetId) !== String(datasetId)) return g;
+          const nextEntries = (g.entries || []).map((e, i) =>
+            i === index ? { ...e, feedback: nextText } : e
+          );
+          return { ...g, entries: nextEntries };
+        })
+      );
+
+      cancelEdit();
+      showToast("Feedback updated.", "success");
+    } catch (e) {
+      console.error("Failed to update feedback:", e);
+      showToast("Failed to update feedback.", "error");
+    }
+  }
+
+  /** ---------------------------
+   *  Derived visible lists
+   *  -------------------------- */
+  const visibleOpenRequests = useMemo(() => {
+    return (openRequests || []).filter((r) => canSeeDatasetId(r.datasetId));
+  }, [openRequests, currentUser?.id, currentUser?.role]);
+
+  const visibleFeedbackGroups = useMemo(() => {
+    return (feedbackStore || []).filter((g) => canSeeDatasetId(g.datasetId));
+  }, [feedbackStore, currentUser?.id, currentUser?.role]);
+
+  function toggleOpen(datasetId) {
+    setOpenReceivedRow(null);
+    setRequestIndex(0);
+    setOpenRow((prev) => (prev === datasetId ? null : datasetId));
+  }
+  function toggleReceived(datasetId) {
+    setOpenRow(null);
+    setRequestIndex(0);
+    setOpenReceivedRow((prev) => (prev === datasetId ? null : datasetId));
+  }
+
+  function prevImage(max) {
+    setRequestIndex((idx) => (max <= 0 ? 0 : idx === 0 ? max - 1 : idx - 1));
+  }
+  function nextImage(max) {
+    setRequestIndex((idx) => (max <= 0 ? 0 : idx === max - 1 ? 0 : idx + 1));
   }
 
   function toModalImagesFromRequests(reqs) {
     return (reqs || []).map((q) => ({
       src: q.image,
       filename: q.filename || getFileNameFromSrc(q.image),
+      datasetId: q.datasetId,
+      imageId: q.imageId,
     }));
   }
   function toModalImagesFromEntries(entries) {
     return (entries || []).map((e) => ({
       src: e.image,
       filename: e.filename || getFileNameFromSrc(e.image),
+      datasetId: e.datasetId,
+      imageId: e.imageId,
     }));
   }
 
   function ImageViewer({ image, total, filename, modalImages }) {
-    const shownName = filename || getFileNameFromSrc(image);
+    const shownName = filename || getFileNameFromSrc(image) || "Image";
     const [hover, setHover] = useState(false);
 
     return (
@@ -405,90 +783,75 @@ export default function Feedback() {
             justifyContent: "center",
             alignItems: "center",
             overflow: "hidden",
-            backgroundColor: "#fff",
+            position: "relative",
+            backgroundColor: "#FFFFFF",
+            borderRadius: "10px",
+            border: "1px solid rgba(0,0,0,0.12)",
           }}
         >
-          <div
+          {image ? (
+          <img
+            src={image}
             style={{
-              position: "relative",
-              display: "inline-block",
+              display: "block",
               maxWidth: "100%",
               maxHeight: "100%",
+              objectFit: "contain",
+              borderRadius: "0px",
             }}
-          >
-            <img
-              src={image}
-              style={{
-                display: "block",
-                maxWidth: "100%",
-                maxHeight: "100%",
-                objectFit: "contain",
-                borderRadius: "0px",
-              }}
-              alt=""
-            />
+            alt="feedback"
+            onError={(e) => {
+              console.log("IMG LOAD FAILED:", image);
+              console.log("browser error event:", e);
+            }}
+          />
+          ) : null}
 
-            {hover && (
-              <button
-                type="button"
-                title="Maximize"
-                aria-label="Maximize image"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  openImageModal(modalImages, requestIndex);
-                }}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  openImageModal(modalImages, requestIndex);
-                }}
+          {hover && (
+            <button
+              onClick={() => {
+                if (!modalImages?.length) return;
+                openImageModal(modalImages, requestIndex);
+              }}
+              style={{
+                position: "absolute",
+                right: "10px",
+                bottom: "10px",
+                width: "34px",
+                height: "34px",
+                borderRadius: "10px",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                cursor: modalImages?.length ? "pointer" : "default",
+                userSelect: "none",
+                zIndex: 9999,
+                backgroundColor: "rgba(255,255,255,0.35)",
+                boxShadow: "0 2px 10px rgba(0,0,0,0.22)",
+                backdropFilter: "blur(2px)",
+                border: "none",
+                padding: 0,
+              }}
+            >
+              <img
+                src={maximizeIcon}
                 style={{
-                  position: "absolute",
-                  right: "10px",
-                  bottom: "10px",
-                  width: "34px",
-                  height: "34px",
-                  borderRadius: "10px",
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  cursor: "pointer",
-                  userSelect: "none",
-                  zIndex: 9999,
-                  backgroundColor: "rgba(255,255,255,0.35)",
-                  boxShadow: "0 2px 10px rgba(0,0,0,0.22)",
-                  backdropFilter: "blur(2px)",
-                  border: "none",
-                  padding: 0,
+                  width: "18px",
+                  height: "18px",
+                  opacity: 0.9,
+                  pointerEvents: "none",
+                  filter: "drop-shadow(0 1px 5px rgba(0,0,0,0.35))",
                 }}
-              >
-                <img
-                  src={maximizeIcon}
-                  style={{
-                    width: "18px",
-                    height: "18px",
-                    opacity: 0.9,
-                    pointerEvents: "none",
-                    filter: "drop-shadow(0 1px 5px rgba(0,0,0,0.35))",
-                  }}
-                  alt=""
-                />
-              </button>
-            )}
-          </div>
+                alt="maximizeIcon"
+              />
+            </button>
+          )}
         </div>
 
         <div
           style={{
-            height: "22px",
-            marginTop: "10px",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            paddingRight: "8px",
-            paddingLeft: "8px",
-            fontSize: "13px",
+            marginTop: "8px",
+            fontSize: "14px",
             fontWeight: 700,
             color: "#000",
             opacity: 0.75,
@@ -503,18 +866,24 @@ export default function Feedback() {
         <div className="flex justify-center items-center gap-[18px]" style={{ marginTop: "12px" }}>
           <img
             src={prevIcon}
-            onClick={() => prevRequest(total)}
+            onClick={(e) => {
+              e.stopPropagation();
+              prevImage(total);
+            }}
             style={{ width: "34px", cursor: "pointer", userSelect: "none" }}
-            alt=""
+            alt="prevIcon"
           />
 
           <span style={{ fontSize: "18px", fontWeight: 700 }}>
-            {Math.min(requestIndex + 1, total)}/{total}
+            {clamp(requestIndex, 0, Math.max(0, total - 1)) + 1}/{total}
           </span>
 
           <img
             src={nextIcon}
-            onClick={() => nextRequest(total)}
+            onClick={(e) => {
+              e.stopPropagation();
+              nextImage(total);
+            }}
             style={{ width: "34px", cursor: "pointer", userSelect: "none" }}
             alt=""
           />
@@ -523,10 +892,79 @@ export default function Feedback() {
     );
   }
 
+  /** ---------------------------
+   *  Render guards
+   *  -------------------------- */
+  if (loading || pageLoading) {
+    return (
+      <div className="datasets-scroll w-full" style={{ paddingBottom: "40px" }}>
+        <h2 className="italic" style={{ fontWeight: 700, fontSize: "28px", marginBottom: "16px" }}>
+          Open Requests
+        </h2>
+        <div
+          style={{
+            backgroundColor: "#FFF",
+            width: "100%",
+            maxWidth: "900px",
+            borderRadius: "14px",
+            overflow: "hidden",
+            boxShadow: "0 4px 10px rgba(0,0,0,0.12)",
+            padding: "20px",
+            fontSize: "17px",
+            fontWeight: 700,
+            color: "#444",
+          }}
+        >
+          Loading.
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAllowed) {
+    return (
+      <div className="datasets-scroll w-full" style={{ paddingBottom: "40px" }}>
+        <h2 className="italic" style={{ fontWeight: 700, fontSize: "28px", marginBottom: "16px" }}>
+          Open Requests
+        </h2>
+        <div
+          style={{
+            backgroundColor: "#FFF",
+            width: "100%",
+            maxWidth: "900px",
+            borderRadius: "14px",
+            overflow: "hidden",
+            boxShadow: "0 4px 10px rgba(0,0,0,0.12)",
+            padding: "20px",
+            fontSize: "17px",
+            fontWeight: 700,
+            color: "#444",
+          }}
+        >
+          Not authorized.
+        </div>
+      </div>
+    );
+  }
+
+  // second header text, minimal UI change:
+  const historyTitle =
+    hasReviewerDatasets && !hasAnnotatorDatasets
+      ? "Given"
+      : hasAnnotatorDatasets && !hasReviewerDatasets
+        ? "Received"
+        : "Feedback";
+
+  /** ---------------------------
+   *  Main render
+   *  -------------------------- */
   return (
     <div className="datasets-scroll w-full" style={{ paddingBottom: "40px" }}>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
+      {/* ---------------------------
+          Open Requests
+         -------------------------- */}
       <h2 className="italic" style={{ fontWeight: 700, fontSize: "28px", marginBottom: "16px" }}>
         Open Requests
       </h2>
@@ -577,170 +1015,195 @@ export default function Feedback() {
           </div>
         )}
 
-        {visibleOpenRequests.map((r) => (
-          <div key={r.id}>
-            <div
-              className="flex border-b border-[#D6D6D6] select-none"
-              style={{
-                backgroundColor: "#F2F2F2",
-                height: "40px",
-                alignItems: "center",
-                paddingLeft: "18px",
-                fontSize: "15px",
-                cursor: "pointer",
-              }}
-              onClick={(e) => {
-                if (e?.target?.dataset?.blockExpand === "1") return;
-                toggleOpen(r.id);
-              }}
-            >
-              <div className="w-[130px]">{r.dataset}</div>
+        {visibleOpenRequests.map((r) => {
+          const isOpen = openRow === r.id;
+          const safeIdx = clamp(requestIndex, 0, Math.max(0, (r.requests?.length || 1) - 1));
+          const shown = r.requests?.[safeIdx];
 
-              <div className="w-[200px] truncate">
-                {r.reviewer[0]}
-                {r.reviewer.length > 1 && (
-                  <span
-                    data-block-expand="1"
-                    onClick={() => openUsersPopup(r.reviewer)}
-                    style={{ color: "#0073BA", cursor: "pointer" }}
-                  >
-                    {" "}
-                    (+{r.reviewer.length - 1})
-                  </span>
-                )}
-              </div>
+          const canReply = roleInDataset(r.datasetId) === "reviewer" || currentUser?.role === "admin";
 
-              <div className="w-[110px]" style={{ textAlign: "center", position: "relative", left: "-70px" }}>
-                {r.requests.length}
-              </div>
-
-              <div className="w-[160px] truncate">{r.owner}</div>
-
-              <div className="w-[180px] truncate">
-                {r.assigned[0]}
-                {r.assigned.length > 1 && (
-                  <span
-                    data-block-expand="1"
-                    onClick={() => openUsersPopup(r.assigned)}
-                    style={{ color: "#0073BA", cursor: "pointer" }}
-                  >
-                    {" "}
-                    (+{r.assigned.length - 1})
-                  </span>
-                )}
-              </div>
-
-              <div className="flex-1 flex justify-end pr-[18px]">
-                <img
-                  src={openRow === r.id ? minimizeIcon : expandIcon}
-                  style={{
-                    width: "20px",
-                    transition: "transform 0.2s",
-                    transform: openRow === r.id ? "rotate(180deg)" : "rotate(0deg)",
-                    userSelect: "none",
-                    pointerEvents: "none",
-                  }}
-                  alt=""
-                />
-              </div>
-            </div>
-
-            {openRow === r.id && r.requests.length > 0 && (
+          return (
+            <div key={r.id}>
               <div
+                className="flex border-b border-[#D6D6D6] select-none"
                 style={{
-                  backgroundColor: "#FFF",
-                  padding: "20px",
-                  display: "flex",
-                  gap: "20px",
+                  backgroundColor: "#F2F2F2",
+                  height: "40px",
+                  alignItems: "center",
+                  paddingLeft: "18px",
+                  fontSize: "15px",
+                  cursor: "pointer",
                 }}
+                onClick={() => toggleOpen(r.id)}
               >
-                {(() => {
-                  const safeIdx = Math.min(requestIndex, r.requests.length - 1);
-                  const req = r.requests[safeIdx];
+                <div className="w-[130px] truncate">{r.dataset}</div>
 
-                  return (
-                    <>
-                      <ImageViewer
-                        image={req.image}
-                        filename={req.filename}
-                        total={r.requests.length}
-                        modalImages={toModalImagesFromRequests(r.requests)}
-                      />
+                <div
+                  className="w-[200px] truncate"
+                  onClick={(e) => {
+                    if (!r.reviewer?.length) return;
+                    e.stopPropagation();
+                    if (r.reviewer.length > 1) openUsersPopup(r.reviewer);
+                  }}
+                  style={{ cursor: r.reviewer?.length > 1 ? "pointer" : "default" }}
+                  title={(r.reviewer || []).join(", ")}
+                >
+                  {r.reviewer?.[0] || ""}
+                  {r.reviewer?.length > 1 && (
+                    <span style={{ opacity: 0.8, fontWeight: 700 }}>
+                      {" "}
+                      (+{r.reviewer.length - 1})
+                    </span>
+                  )}
+                </div>
 
-                      <div className="flex-1">
-                        <h3 style={{ fontWeight: 700, fontSize: "18px", marginBottom: "6px" }}>
-                          {r.assigned[0]} asks:
-                        </h3>
+                <div className="w-[110px]" style={{ textAlign: "center", position: "relative", left: "-70px" }}>
+                  {r.requests?.length || 0}
+                </div>
 
-                        <div
-                          style={{
-                            backgroundColor: "#FFF",
-                            border: "1px solid #D1D5DB",
-                            borderRadius: "12px",
-                            padding: "12px",
-                            marginBottom: "14px",
-                            fontSize: "15px",
-                            maxWidth: "460px",
-                          }}
-                        >
-                          “{req.question}”
+                <div className="w-[160px] truncate">{r.owner}</div>
+
+                <div
+                  className="w-[180px] truncate"
+                  onClick={(e) => {
+                    if (!r.assigned?.length) return;
+                    e.stopPropagation();
+                    if (r.assigned.length > 1) openUsersPopup(r.assigned);
+                  }}
+                  style={{ cursor: r.assigned?.length > 1 ? "pointer" : "default" }}
+                  title={(r.assigned || []).join(", ")}
+                >
+                  {r.assigned?.[0] || ""}
+                  {r.assigned?.length > 1 && (
+                    <span style={{ opacity: 0.8, fontWeight: 700 }}>
+                      {" "}
+                      (+{r.assigned.length - 1})
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex-1 flex justify-end pr-[18px]">
+                  <img
+                    src={isOpen ? minimizeIcon : expandIcon}
+                    style={{
+                      width: "20px",
+                      transition: "transform 0.2s",
+                      transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+                      userSelect: "none",
+                      pointerEvents: "none",
+                    }}
+                    alt="expand"
+                  />
+                </div>
+              </div>
+
+              {isOpen && shown && (
+                <div
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    padding: "14px 18px 18px 18px",
+                    borderBottom: "1px solid #D6D6D6",
+                  }}
+                >
+                  <div className="flex" style={{ gap: "18px", alignItems: "flex-start" }}>
+                    <ImageViewer
+                      image={shown.image}
+                      total={r.requests.length}
+                      filename={shown.filename}
+                      modalImages={toModalImagesFromRequests(r.requests)}
+                    />
+
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          borderRadius: "12px",
+                          backgroundColor: "#F3F4F6",
+                          border: "1px solid rgba(0,0,0,0.10)",
+                          padding: "12px",
+                          fontSize: "14px",
+                          fontWeight: 700,
+                          color: "#111",
+                          marginBottom: "12px",
+                          userSelect: "text",
+                        }}
+                      >
+                        <div style={{ opacity: 0.8, fontWeight: 800, marginBottom: "6px" }}>Request:</div>
+                        <div style={{ whiteSpace: "pre-wrap" }}>{shown.question}</div>
+                      </div>
+
+                      <div
+                        style={{
+                          borderRadius: "12px",
+                          backgroundColor: "#FFFFFF",
+                          border: "1px solid rgba(0,0,0,0.12)",
+                          padding: "12px",
+                        }}
+                      >
+                        <div style={{ fontSize: "14px", fontWeight: 800, marginBottom: "8px" }}>
+                          {canReply ? "Reply (Reviewer)" : "Reply (Reviewer only)"}
                         </div>
 
                         <textarea
-                          placeholder={isReviewer ? "Write feedback..." : "Only reviewers can send feedback."}
                           id={`fb-${r.id}`}
-                          disabled={!isReviewer}
+                          placeholder={canReply ? "Write feedback..." : "Only reviewers can reply."}
+                          disabled={!canReply}
+                          className="datasets-scroll"
                           style={{
-                            width: "460px",
-                            height: "120px",
-                            border: "1px solid #D1D5DB",
+                            width: "100%",
+                            minHeight: "100px",
+                            maxHeight: "160px",
                             borderRadius: "10px",
-                            padding: "12px",
+                            border: "1px solid rgba(0,0,0,0.18)",
+                            padding: "10px 12px",
+                            fontSize: "14px",
+                            outline: "none",
                             resize: "none",
-                            fontSize: "16px",
-                            marginBottom: "4px",
-                            opacity: isReviewer ? 1 : 0.6,
+                            opacity: canReply ? 1 : 0.65,
+                            backgroundColor: canReply ? "#FFFFFF" : "#F3F4F6",
                           }}
                         />
 
                         <button
+                          onClick={() => sendFeedbackForDataset(r.id)}
+                          disabled={!canReply}
                           style={{
-                            width: "486px",
-                            padding: "12px 0",
+                            padding: "10px 18px",
                             borderRadius: "10px",
                             backgroundColor: "#B3DCD7",
                             border: "1px solid #91D0C9",
-                            cursor: isReviewer ? "pointer" : "not-allowed",
+                            cursor: canReply ? "pointer" : "not-allowed",
                             fontWeight: 700,
                             fontSize: "17px",
                             marginTop: "10px",
-                            opacity: isReviewer ? 1 : 0.7,
+                            opacity: canReply ? 1 : 0.7,
                           }}
                           onMouseEnter={(e) => {
-                            if (!isReviewer) return;
-                            e.target.style.backgroundColor = "#9BCFC7";
+                            if (!canReply) return;
+                            e.currentTarget.style.backgroundColor = "#9BCFC7";
                           }}
                           onMouseLeave={(e) => {
-                            e.target.style.backgroundColor = "#B3DCD7";
+                            e.currentTarget.style.backgroundColor = "#B3DCD7";
                           }}
-                          onClick={() => sendFeedback(r.id, document.getElementById(`fb-${r.id}`)?.value || "")}
                         >
                           Send Feedback
                         </button>
                       </div>
-                    </>
-                  );
-                })()}
-              </div>
-            )}
-          </div>
-        ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <div style={{ height: "40px" }} />
 
+      {/* ---------------------------
+          History: Given / Received
+         -------------------------- */}
       <h2 className="italic" style={{ fontWeight: 700, fontSize: "28px", marginBottom: "16px" }}>
-        {isReviewer ? "Given" : "Received"}
+        {historyTitle}
       </h2>
 
       <div
@@ -764,7 +1227,7 @@ export default function Feedback() {
         >
           <div className="w-[130px]">Dataset</div>
 
-          <div className="w-[200px]">{isReviewer ? "Annotator" : "Reviewer"}</div>
+          <div className="w-[200px]">Counterpart</div>
 
           <div className="w-[110px]" style={{ textAlign: "center", position: "relative", left: "-70px" }}>
             #
@@ -775,7 +1238,7 @@ export default function Feedback() {
           <div className="flex-1"></div>
         </div>
 
-        {visibleFeedback.length === 0 && (
+        {visibleFeedbackGroups.length === 0 && (
           <div
             style={{
               padding: "20px",
@@ -785,20 +1248,28 @@ export default function Feedback() {
               color: "#444",
             }}
           >
-            {isReviewer ? "No feedback given yet." : "No feedback received yet."}
+            No feedback yet.
           </div>
         )}
 
-        {visibleFeedback.map((r) => {
-          const safeIdx = Math.min(requestIndex, Math.max(0, r.entries.length - 1));
-          const first = r.entries[0];
-          const shown = r.entries[safeIdx];
+        {visibleFeedbackGroups.map((g) => {
+          const isOpen = openReceivedRow === g.datasetId;
+          const safeIdx = clamp(requestIndex, 0, Math.max(0, (g.entries?.length || 1) - 1));
+          const first = g.entries?.[0];
+          const shown = g.entries?.[safeIdx];
+
+          const canEdit = (roleInDataset(g.datasetId) === "reviewer" || currentUser?.role === "admin");
+
+          const counterpart =
+            roleInDataset(g.datasetId) === "reviewer"
+              ? first?.annotator
+              : first?.reviewer;
 
           const isEditingThis =
-            isReviewer && editTarget && editTarget.datasetId === r.datasetId && editTarget.index === safeIdx;
+            canEdit && editTarget && String(editTarget.datasetId) === String(g.datasetId) && editTarget.index === safeIdx;
 
           return (
-            <div key={r.datasetId}>
+            <div key={g.datasetId}>
               <div
                 className="flex border-b border-[#D6D6D6] select-none"
                 style={{
@@ -809,270 +1280,181 @@ export default function Feedback() {
                   fontSize: "15px",
                   cursor: "pointer",
                 }}
-                onClick={() => toggleReceived(r.datasetId)}
+                onClick={() => toggleReceived(g.datasetId)}
               >
-                <div className="w-[130px]">{r.dataset}</div>
+                <div className="w-[130px] truncate">{g.dataset}</div>
 
-                <div className="w-[200px] truncate">{isReviewer ? first?.annotator : first?.reviewer}</div>
+                <div className="w-[200px] truncate">{counterpart || ""}</div>
 
                 <div className="w-[110px]" style={{ textAlign: "center", position: "relative", left: "-70px" }}>
-                  {r.entries.length}
+                  {g.entries?.length || 0}
                 </div>
 
                 <div className="w-[360px] truncate" style={{ color: "#555" }}>
-                  {first?.feedback}
+                  {first?.feedback || ""}
                 </div>
 
                 <div className="flex-1 flex justify-end pr-[18px]">
                   <img
-                    src={openReceivedRow === r.datasetId ? minimizeIcon : expandIcon}
+                    src={isOpen ? minimizeIcon : expandIcon}
                     style={{
                       width: "20px",
                       transition: "transform 0.2s",
-                      transform: openReceivedRow === r.datasetId ? "rotate(180deg)" : "rotate(0deg)",
+                      transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
                       userSelect: "none",
                       pointerEvents: "none",
                     }}
-                    alt=""
+                    alt="expand"
                   />
                 </div>
               </div>
 
-              {openReceivedRow === r.datasetId && shown && (
+              {isOpen && shown && (
                 <div
                   style={{
-                    backgroundColor: "#FFF",
-                    padding: "20px",
-                    display: "flex",
-                    gap: "22px",
+                    backgroundColor: "#FFFFFF",
+                    padding: "14px 18px 18px 18px",
+                    borderBottom: "1px solid #D6D6D6",
                   }}
                 >
-                  <ImageViewer
-                    image={shown.image}
-                    filename={shown.filename}
-                    total={r.entries.length}
-                    modalImages={toModalImagesFromEntries(r.entries)}
-                  />
+                  <div className="flex" style={{ gap: "18px", alignItems: "flex-start" }}>
+                    <ImageViewer
+                      image={shown.image}
+                      total={g.entries.length}
+                      filename={shown.filename}
+                      modalImages={toModalImagesFromEntries(g.entries)}
+                    />
 
-                  <div className="flex-1" style={{ minWidth: 0 }}>
-                    {isReviewer ? (
-                      <>
-                        <h3 style={{ fontWeight: 700, fontSize: "18px", marginBottom: "10px" }}>Remarks:</h3>
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          borderRadius: "12px",
+                          backgroundColor: "#F3F4F6",
+                          border: "1px solid rgba(0,0,0,0.10)",
+                          padding: "12px",
+                          fontSize: "14px",
+                          fontWeight: 700,
+                          color: "#111",
+                          marginBottom: "12px",
+                          userSelect: "text",
+                        }}
+                      >
+                        <div style={{ opacity: 0.8, fontWeight: 800, marginBottom: "6px" }}>Request:</div>
+                        <div style={{ whiteSpace: "pre-wrap" }}>{shown.question}</div>
+                      </div>
 
-                        <div
-                          style={{
-                            backgroundColor: "#FFF",
-                            border: "1px solid #D1D5DB",
-                            borderRadius: "12px",
-                            padding: "12px",
-                            fontSize: "15px",
-                            overflowWrap: "anywhere",
-                            wordBreak: "break-word",
-                            whiteSpace: "pre-wrap",
-                            maxHeight: "140px",
-                            overflowY: "auto",
-                            marginBottom: "20px",
-                          }}
-                        >
-                          {shown.question}
+                      <div
+                        style={{
+                          borderRadius: "12px",
+                          backgroundColor: "#FFFFFF",
+                          border: "1px solid rgba(0,0,0,0.12)",
+                          padding: "12px",
+                          position: "relative",
+                        }}
+                      >
+                        <div style={{ fontSize: "14px", fontWeight: 800, marginBottom: "8px" }}>
+                          Feedback:
                         </div>
 
-                        <h3 style={{ fontWeight: 700, fontSize: "18px", marginBottom: "10px" }}>
-                          Feedback given:
-                        </h3>
-
-                        <div
-                          style={{
-                            backgroundColor: "#FFF",
-                            border: "1px solid #D1D5DB",
-                            borderRadius: "12px",
-                            padding: "12px",
-                            fontSize: "15px",
-                            overflow: "hidden",
-                            maxHeight: "140px",
-                            display: "flex",
-                            flexDirection: "column",
-                          }}
-                        >
-                          <div
-                            style={{
-                              flex: "1 1 auto",
-                              overflowY: "auto",
-                              overflowX: "hidden",
-                              whiteSpace: "pre-wrap",
-                              overflowWrap: "anywhere",
-                              wordBreak: "break-word",
-                              paddingRight: "10px",
-                            }}
-                          >
-                            {isEditingThis ? (
-                              <textarea
-                                ref={editTextareaRef}
-                                value={editValue}
-                                onChange={(e) => {
-                                  setEditValue(e.target.value);
-                                  requestAnimationFrame(autoSizeEditTextarea);
-                                }}
-                                style={{
-                                  width: "100%",
-                                  border: "none",
-                                  outline: "none",
-                                  resize: "none",
-                                  background: "transparent",
-                                  fontSize: "15px",
-                                  overflow: "hidden",
-                                  padding: 0,
-                                  margin: 0,
-                                  display: "block",
-                                  whiteSpace: "pre-wrap",
-                                  overflowWrap: "anywhere",
-                                  wordBreak: "break-word",
-                                }}
-                              />
-                            ) : (
-                              shown.feedback
-                            )}
-                          </div>
-
-                          <div
-                            style={{
-                              flex: "0 0 auto",
-                              height: "22px",
-                              display: "flex",
-                              justifyContent: "flex-end",
-                              alignItems: "flex-end",
-                              // paddingTop: "0px",
-                            }}
-                          >
-                            {!isEditingThis && (
+                        {!isEditingThis && (
+                          <>
+                            {canEdit && (
                               <button
-                                type="button"
-                                onClick={() => startEdit(r.datasetId, safeIdx, shown.feedback)}
+                                onClick={() => startEdit(g.datasetId, safeIdx, shown.feedback)}
                                 style={{
+                                  position: "absolute",
+                                  right: "10px",
+                                  top: "10px",
+                                  width: "34px",
+                                  height: "34px",
+                                  borderRadius: "10px",
                                   display: "flex",
+                                  justifyContent: "center",
                                   alignItems: "center",
-                                  gap: "8px",
-                                  border: "none",
-                                  background: "transparent",
                                   cursor: "pointer",
                                   userSelect: "none",
+                                  backgroundColor: "rgba(255,255,255,0.65)",
+                                  border: "1px solid rgba(0,0,0,0.12)",
                                   padding: 0,
-                                  fontStyle: "italic",
-                                  fontWeight: 700,
-                                  fontSize: "16px",
-                                  color: "#000",
-                                  opacity: 0.85,
-                                  whiteSpace: "nowrap",
                                 }}
+                                title="Edit feedback"
                               >
-                                Edit
                                 <img
                                   src={editIcon}
-                                  style={{ width: "18px", height: "18px", pointerEvents: "none" }}
-                                  alt=""
+                                  style={{
+                                    width: "18px",
+                                    height: "18px",
+                                    pointerEvents: "none",
+                                    opacity: 0.85,
+                                  }}
+                                  alt="edit"
                                 />
                               </button>
                             )}
-                          </div>
-                        </div>
+
+                            <div style={{ whiteSpace: "pre-wrap", fontSize: "14px", color: "#111" }}>
+                              {shown.feedback}
+                            </div>
+                          </>
+                        )}
 
                         {isEditingThis && (
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "flex-end",
-                              gap: "10px",
-                              marginTop: "12px",
-                            }}
-                          >
-                            <button
-                              type="button"
-                              onClick={saveEdit}
+                          <>
+                            <textarea
+                              ref={editTextareaRef}
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              className="datasets-scroll"
                               style={{
-                                padding: "8px 12px",
+                                width: "100%",
+                                minHeight: "90px",
                                 borderRadius: "10px",
-                                backgroundColor: "#B3DCD7",
-                                border: "1px solid #91D0C9",
-                                cursor: "pointer",
-                                fontStyle: "italic",
-                                fontWeight: 700,
+                                border: "1px solid rgba(0,0,0,0.18)",
+                                padding: "10px 12px",
                                 fontSize: "14px",
-                                userSelect: "none",
-                                whiteSpace: "nowrap",
+                                outline: "none",
+                                resize: "none",
                               }}
-                              onMouseEnter={(e) => (e.target.style.backgroundColor = "#9BCFC7")}
-                              onMouseLeave={(e) => (e.target.style.backgroundColor = "#B3DCD7")}
-                            >
-                              Save
-                            </button>
+                              onInput={autoSizeEditTextarea}
+                            />
 
-                            <button
-                              type="button"
-                              onClick={cancelEdit}
-                              style={{
-                                padding: "8px 12px",
-                                borderRadius: "10px",
-                                backgroundColor: "#F2F2F2",
-                                border: "1px solid #D1D5DB",
-                                cursor: "pointer",
-                                fontStyle: "italic",
-                                fontWeight: 700,
-                                fontSize: "14px",
-                                userSelect: "none",
-                                whiteSpace: "nowrap",
-                              }}
-                              onMouseEnter={(e) => (e.target.style.backgroundColor = "#E8E8E8")}
-                              onMouseLeave={(e) => (e.target.style.backgroundColor = "#F2F2F2")}
-                            >
-                              Cancel
-                            </button>
-                          </div>
+                            <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+                              <button
+                                onClick={() => saveEdit(g.datasetId, safeIdx, shown.remarkId)}
+                                style={{
+                                  padding: "10px 18px",
+                                  borderRadius: "10px",
+                                  backgroundColor: "#B3DCD7",
+                                  border: "1px solid #91D0C9",
+                                  cursor: "pointer",
+                                  fontWeight: 700,
+                                  fontSize: "15px",
+                                }}
+                                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#9BCFC7")}
+                                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#B3DCD7")}
+                              >
+                                Save
+                              </button>
+
+                              <button
+                                onClick={cancelEdit}
+                                style={{
+                                  padding: "10px 18px",
+                                  borderRadius: "10px",
+                                  backgroundColor: "#F3F4F6",
+                                  border: "1px solid rgba(0,0,0,0.18)",
+                                  cursor: "pointer",
+                                  fontWeight: 700,
+                                  fontSize: "15px",
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </>
                         )}
-                      </>
-                    ) : (
-                      <>
-                        <h3 style={{ fontWeight: 700, fontSize: "18px", marginBottom: "10px" }}>
-                          Feedback received:
-                        </h3>
-
-                        <div
-                          style={{
-                            backgroundColor: "#FFF",
-                            border: "1px solid #D1D5DB",
-                            borderRadius: "12px",
-                            padding: "12px",
-                            marginBottom: "20px",
-                            fontSize: "15px",
-                            overflowWrap: "anywhere",
-                            wordBreak: "break-word",
-                            whiteSpace: "pre-wrap",
-                            maxHeight: "140px",
-                            overflowY: "auto",
-                          }}
-                        >
-                          {shown.feedback}
-                        </div>
-
-                        <h3 style={{ fontWeight: 700, fontSize: "18px", marginBottom: "10px" }}>Remarks:</h3>
-
-                        <div
-                          style={{
-                            backgroundColor: "#FFF",
-                            border: "1px solid #D1D5DB",
-                            borderRadius: "12px",
-                            padding: "12px",
-                            fontSize: "15px",
-                            overflowWrap: "anywhere",
-                            wordBreak: "break-word",
-                            whiteSpace: "pre-wrap",
-                            maxHeight: "140px",
-                            overflowY: "auto",
-                          }}
-                        >
-                          {shown.question}
-                        </div>
-                      </>
-                    )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1081,68 +1463,92 @@ export default function Feedback() {
         })}
       </div>
 
-      {popupUsers && (
-        <>
+      {/* Users popup */}
+      {popupUsers &&
+        createPortal(
           <div
-            className="fixed inset-0"
-            onClick={closeUsersPopup}
-            style={{
-              backgroundColor: "rgba(0,0,0,0.7)",
-              zIndex: 10000,
+            onMouseDown={(e) => {
+              if (e.target !== e.currentTarget) return;
+              closeUsersPopup();
             }}
-          />
-
-          <div
-            className="fixed top-1/2 left-1/2 rounded-[14px]"
             style={{
-              transform: "translate(-50%, -50%)",
-              width: "360px",
-              backgroundColor: "#FFF",
-              padding: "20px",
-              boxShadow: "0 8px 30px rgba(0,0,0,0.25)",
-              zIndex: 10001,
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: "100vw",
+              height: "100vh",
+              backgroundColor: "rgba(0,0,0,0.55)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 9999,
+              padding: "12px",
+              boxSizing: "border-box",
             }}
           >
-            <h3 className="italic" style={{ fontWeight: 700, fontSize: "20px", marginBottom: "12px" }}>
-              Users
-            </h3>
-
-            {popupUsers.map((u, i) => (
+            <div
+              style={{
+                width: "420px",
+                maxWidth: "96vw",
+                borderRadius: "16px",
+                backgroundColor: "#FFFFFF",
+                boxShadow: "0 6px 20px rgba(0,0,0,0.30)",
+                overflow: "hidden",
+              }}
+            >
               <div
-                key={i}
                 style={{
-                  padding: "10px 0",
-                  borderBottom: "1px solid #DDD",
+                  padding: "14px 18px",
+                  backgroundColor: "#44F3C9",
+                  fontWeight: 800,
                   fontSize: "16px",
-                  fontWeight: 400,
                 }}
               >
-                {u}
+                Users
               </div>
-            ))}
 
-            <button
-              onClick={closeUsersPopup}
-              style={{
-                marginTop: "18px",
-                width: "100%",
-                padding: "10px 0",
-                borderRadius: "10px",
-                backgroundColor: "#B3DCD7",
-                border: "1px solid #91D0C9",
-                cursor: "pointer",
-                fontSize: "17px",
-                fontWeight: 700,
-              }}
-              onMouseEnter={(e) => (e.target.style.backgroundColor = "#9BCFC7")}
-              onMouseLeave={(e) => (e.target.style.backgroundColor = "#B3DCD7")}
-            >
-              Close
-            </button>
-          </div>
-        </>
-      )}
+              <div className="datasets-scroll" style={{ maxHeight: "320px", overflowY: "auto" }}>
+                {(popupUsers || []).map((u, i) => (
+                  <div
+                    key={`${u}-${i}`}
+                    style={{
+                      padding: "12px 18px",
+                      borderBottom: "1px solid rgba(0,0,0,0.08)",
+                      fontWeight: 700,
+                      fontSize: "15px",
+                      color: "#222",
+                    }}
+                  >
+                    {u}
+                  </div>
+                ))}
+              </div>
 
+              <div style={{ padding: "14px 18px", display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  onClick={closeUsersPopup}
+                  style={{
+                    padding: "10px 18px",
+                    borderRadius: "10px",
+                    backgroundColor: "#B3DCD7",
+                    border: "1px solid #91D0C9",
+                    cursor: "pointer",
+                    fontWeight: 800,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#9BCFC7")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#B3DCD7")}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* Image modal */}
       {imageModal &&
         createPortal(
           <div
@@ -1159,52 +1565,76 @@ export default function Feedback() {
               width: "100vw",
               height: "100vh",
               backgroundColor: "rgba(0,0,0,0.78)",
-              zIndex: 9999999999999,
               display: "flex",
-              justifyContent: "center",
               alignItems: "center",
+              justifyContent: "center",
+              zIndex: 9999,
+              padding: "12px",
+              boxSizing: "border-box",
             }}
           >
             <div
-              onMouseDown={(e) => e.stopPropagation()}
               style={{
+                width: "min(1200px, 96vw)",
+                height: "min(760px, 92vh)",
+                backgroundColor: "#111",
+                borderRadius: "18px",
+                overflow: "hidden",
+                boxShadow: "0 8px 30px rgba(0,0,0,0.40)",
                 position: "relative",
-                width: "96vw",
-                height: "92vh",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
               }}
             >
+              {/* filename */}
+              <div
+                style={{
+                  position: "absolute",
+                  left: "14px",
+                  top: "12px",
+                  padding: "8px 12px",
+                  borderRadius: "12px",
+                  backgroundColor: "rgba(255,255,255,0.15)",
+                  color: "#fff",
+                  fontWeight: 800,
+                  fontSize: "14px",
+                  zIndex: 5,
+                  maxWidth: "70%",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {imageModal.images?.[imageModal.index]?.filename || ""}
+              </div>
+
+              {/* close */}
               <button
-                type="button"
-                aria-label="Close"
                 onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  guardedCloseImageModal();
+                  closeImageModal();
                 }}
                 style={{
                   position: "absolute",
-                  top: "-28px",
-                  right: "-28px",
-                  border: "none",
-                  background: "transparent",
+                  right: "14px",
+                  top: "12px",
+                  width: "46px",
+                  height: "46px",
+                  borderRadius: "14px",
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  backgroundColor: "rgba(0,0,0,0.25)",
                   color: "#fff",
-                  cursor: "pointer",
-                  fontSize: "38px",
+                  fontSize: "22px",
                   fontWeight: 900,
-                  lineHeight: "38px",
-                  padding: 0,
-                  userSelect: "none",
-                  textShadow: "0 6px 16px rgba(0,0,0,0.6)",
-                  zIndex: 60,
+                  cursor: "pointer",
+                  zIndex: 5,
                 }}
+                aria-label="Close"
               >
-                ×
+                ✕
               </button>
 
-              <div
+              {/* prev */}
+              <button
                 onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -1220,27 +1650,19 @@ export default function Feedback() {
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "center",
+                  borderRadius: "22px",
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  backgroundColor: "rgba(0,0,0,0.25)",
                   cursor: "pointer",
-                  userSelect: "none",
-                  zIndex: 50,
+                  zIndex: 5,
                 }}
+                aria-label="Previous"
               >
-                <img
-                  src={prevIcon}
-                  style={{
-                    width: "72px",
-                    height: "72px",
-                    userSelect: "none",
-                    pointerEvents: "none",
-                    filter:
-                      "drop-shadow(0 10px 18px rgba(0,0,0,0.75)) drop-shadow(0 0 10px rgba(0,0,0,0.55))",
-                    opacity: 1,
-                  }}
-                  alt=""
-                />
-              </div>
+                <img src={prevIcon} alt="Previous" style={{ width: "44px", userSelect: "none", pointerEvents: "none" }} />
+              </button>
 
-              <div
+              {/* next */}
+              <button
                 onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -1256,65 +1678,68 @@ export default function Feedback() {
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "center",
+                  borderRadius: "22px",
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  backgroundColor: "rgba(0,0,0,0.25)",
                   cursor: "pointer",
-                  userSelect: "none",
-                  zIndex: 50,
+                  zIndex: 5,
                 }}
+                aria-label="Next"
               >
-                <img
-                  src={nextIcon}
-                  style={{
-                    width: "72px",
-                    height: "72px",
-                    userSelect: "none",
-                    pointerEvents: "none",
-                    filter:
-                      "drop-shadow(0 10px 18px rgba(0,0,0,0.75)) drop-shadow(0 0 10px rgba(0,0,0,0.55))",
-                    opacity: 1,
-                  }}
-                  alt=""
-                />
-              </div>
+                <img src={nextIcon} alt="Next" style={{ width: "44px", userSelect: "none", pointerEvents: "none" }} />
+              </button>
 
-              <img
-                src={imageModal.images[imageModal.index]?.src}
-                draggable={false}
+              {/* image */}
+              <div
                 style={{
                   width: "100%",
                   height: "100%",
-                  objectFit: "contain",
-                  userSelect: "none",
-                  cursor: "default",
-                  display: "block",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "60px 110px 40px 110px",
+                  boxSizing: "border-box",
                 }}
-                alt=""
-              />
+              >
+                {imageModal.images?.[imageModal.index]?.src ? ( 
+                  <img
+                    src={imageModal.images?.[imageModal.index]?.src}
+                    draggable={false}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "contain",
+                      userSelect: "none",
+                    }}
+                    alt="image"
+                  />
+                ) : null}
 
+              </div>
+
+              {/* counter */}
               <div
                 style={{
                   position: "absolute",
-                  bottom: "34px",
+                  bottom: "12px",
                   left: "50%",
                   transform: "translateX(-50%)",
-                  color: "#fff",
-                  fontSize: "18px",
-                  fontWeight: 700,
-                  userSelect: "none",
-                  textShadow: "0 6px 16px rgba(0,0,0,0.6)",
-                  whiteSpace: "nowrap",
-                  backgroundColor: "rgba(0,0,0,0.25)",
-                  padding: "6px 12px",
+                  padding: "8px 12px",
                   borderRadius: "12px",
-                  backdropFilter: "blur(2px)",
-                  zIndex: 55,
+                  backgroundColor: "rgba(255,255,255,0.15)",
+                  color: "#fff",
+                  fontWeight: 900,
+                  fontSize: "14px",
+                  zIndex: 5,
+                  userSelect: "none",
                 }}
               >
-                {imageModal.index + 1}/{imageModal.images.length}
+                {imageModal.index + 1}/{imageModal.images?.length || 0}
               </div>
             </div>
           </div>,
           document.body
         )}
-    </div>
-  );
+    </div>
+  );
 }
