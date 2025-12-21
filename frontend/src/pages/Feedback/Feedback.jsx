@@ -6,6 +6,15 @@ import minimizeIcon from "../../assets/feedback/minimize-details.png";
 import maximizeIcon from "../../assets/feedback/maximize.png";
 import editIcon from "../../assets/feedback/edit.png";
 
+import BoundingBoxOverlay from "../Annotation/Tools/BoundingBox/BoundingBoxOverlay";
+import PolygonOverlay from "../Annotation/Tools/Polygon/PolygonOverlay";
+import EllipseOverlay from "../Annotation/Tools/Ellipse/EllipseOverlay";
+import PencilOverlay from "../Annotation/Tools/Pencil/PencilOverlay";
+import MagicWandOverlay from "../Annotation/Tools/MagicWand/MagicWandOverlay";
+
+import { getImageDrawRect } from "../../utils/annotationGeometry";
+import { useImageAnnotations, prefetchAnnotations } from "../../utils/useImageAnnotations";
+
 import prevIcon from "../../assets/feedback/previous_image.png";
 import nextIcon from "../../assets/feedback/next_image.png";
 
@@ -75,6 +84,200 @@ async function runPool(items, limit, worker) {
   await Promise.all(runners);
   return results;
 }
+/* overlay Helper  */
+function ReadOnlyOverlays({ imageId, imageRect }) {
+  const [apiShapes, setApiShapes] = useState(null);
+
+  // ✅ hook vult jouw state (hij returnt geen data)
+  useImageAnnotations({
+    activeImageId: imageId,
+    setShapesFromApi: setApiShapes,
+  });
+
+  if (!imageId || !imageRect || !apiShapes) return null;
+
+  // ✅ probeer meerdere mogelijke shapes-keys (verschilt per backend)
+  const data = apiShapes || {};
+  if (!imageId || !imageRect) return null;
+
+  const annotations = Array.isArray(data.annotations) ? data.annotations : [];
+
+  const toPoints = (raw) => {
+    if (!Array.isArray(raw) || raw.length === 0) return [];
+
+    // [[x,y], ...]
+    if (Array.isArray(raw[0])) {
+      return raw
+        .map((p) => ({ x: p?.[0], y: p?.[1] }))
+        .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+    }
+
+    // [{x,y}, ...]
+    if (typeof raw[0] === "object") {
+      return raw
+        .map((p) => ({ x: p?.x, y: p?.y }))
+        .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+    }
+
+    return [];
+  };
+
+  // bbox (zelfde mapping als BoundingBoxTool.jsx)
+  const boxes = annotations
+    .filter((ann) => ann.type === "bbox" && ann.geometry)
+    .map((ann) => ({
+      id: ann.id,
+      x: ann.geometry.x,
+      y: ann.geometry.y,
+      w: ann.geometry.width,
+      h: ann.geometry.height,
+      category: ann.label,
+    }));
+
+  // ellipse (zelfde mapping als EllipseTool.jsx)
+  const ellipses = annotations
+    .filter((ann) => ann.type === "ellipse" && ann.geometry)
+    .map((ann) => ({
+      id: ann.id,
+      x: ann.geometry.cx - ann.geometry.rx,
+      y: ann.geometry.cy - ann.geometry.ry,
+      w: ann.geometry.rx * 2,
+      h: ann.geometry.ry * 2,
+      category: ann.label,
+    }));
+
+  // freehand (zelfde mapping als PencilTool.jsx)
+  const strokes = annotations
+    .filter((ann) => ann.type === "freehand" && ann.geometry?.path)
+    .map((ann) => ({
+      id: ann.id,
+      category: ann.label,
+      points: ann.geometry.path.map(([x, y]) => ({ x, y })),
+      closed: true,
+    }));
+
+  // polygon (robust: verschillende mogelijke geometry keys)
+  const polygons = annotations
+    .filter((ann) => ann.type === "polygon" && ann.geometry)
+    .map((ann) => {
+      const g = ann.geometry || {};
+      const pts = toPoints(g.points || g.vertices || g.path || []);
+      return {
+        id: ann.id,
+        category: ann.label,
+        points: pts,
+        closed: true,
+      };
+    })
+    .filter((p) => p.points.length >= 2);
+
+  // mask / magicwand (ook robust + support voor geometry.regions)
+  const regions = annotations
+    .filter((ann) => ["mask", "magicwand", "region"].includes(ann.type))
+    .flatMap((ann) => {
+      const g = ann.geometry || {};
+
+      if (Array.isArray(g.regions)) {
+        return g.regions.map((r, idx) => {
+          const pts = toPoints(r.points || r.vertices || r.path || r.contour || []);
+          return {
+            id: `${ann.id}_${idx}`,
+            category: ann.label,
+            points: pts,
+            vertices: pts, // extra veld (kan helpen als overlay 'vertices' verwacht)
+          };
+        });
+      }
+
+      const pts = toPoints(g.points || g.vertices || g.path || g.contour || []);
+      if (pts.length === 0) return [];
+
+      return [
+        {
+          id: ann.id,
+          category: ann.label,
+          points: pts,
+          vertices: pts,
+        },
+      ];
+    });
+
+  // Debug (tijdelijk): check of je überhaupt data hebt
+  // console.log("ReadOnlyOverlays", { imageId, imageRect, apiShapes });
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        pointerEvents: "none",
+        zIndex: 20, // ✅ BELANGRIJK: zorg dat overlays boven image liggen
+      }}
+    >
+      <BoundingBoxOverlay
+        boxes={boxes}
+        draft={null}
+        selectedId={null}
+        setSelectedId={() => {}}
+        onBoxMouseDown={() => {}}
+        onHandleMouseDown={() => {}}
+        imgLeft={imageRect.left}
+        imgTop={imageRect.top}
+        imgWidth={imageRect.width}
+        imgHeight={imageRect.height}
+      />
+
+      <PolygonOverlay
+        polygons={polygons}
+        draft={[]}
+        selectedId={null}
+        onVertexMouseDown={() => {}}
+        onPolygonMouseDown={() => {}}
+        onSelect={() => {}}
+        imgLeft={imageRect.left}
+        imgTop={imageRect.top}
+        imgWidth={imageRect.width}
+        imgHeight={imageRect.height}
+      />
+
+      <EllipseOverlay
+        ellipses={ellipses}
+        draft={null}
+        selectedId={null}
+        onEllipseMouseDown={() => {}}
+        onHandleMouseDown={() => {}}
+        imgLeft={imageRect.left}
+        imgTop={imageRect.top}
+        imgWidth={imageRect.width}
+        imgHeight={imageRect.height}
+      />
+
+      <PencilOverlay
+        strokes={strokes}
+        draft={[]}
+        selectedId={null}
+        imgLeft={imageRect.left}
+        imgTop={imageRect.top}
+        imgWidth={imageRect.width}
+        imgHeight={imageRect.height}
+        onStrokeMouseDown={() => {}}
+      />
+
+      <MagicWandOverlay
+        regions={regions}
+        selectedId={null}
+        onVertexMouseDown={() => {}}
+        onRegionMouseDown={() => {}}
+        onSelect={() => {}}
+        imgLeft={imageRect.left}
+        imgTop={imageRect.top}
+        imgWidth={imageRect.width}
+        imgHeight={imageRect.height}
+      />
+    </div>
+  );
+}
+
 
 /** ---------------------------
  *  Component
@@ -106,14 +309,21 @@ export default function Feedback() {
   }
 
   /** Image modal */
-  const [imageModal, setImageModal] = useState(null); // { images:[{src, filename, datasetId, imageId}], index }
+  const [imageModal, setImageModal] = useState(
+    {
+      open: false,
+      images: [],
+      index: 0,
+    }
+  ); // { images:[{src, filename, datasetId, imageId}], index }
   const ignoreCloseUntilRef = useRef(0);
   function openImageModal(images, index) {
     ignoreCloseUntilRef.current = Date.now() + 250;
-    setImageModal({ images, index });
+    setImageModal({open:true,  images, index });
+    
   }
   function closeImageModal() {
-    setImageModal(null);
+    setImageModal( {open: false, images: [], index: 0});
   }
   function guardedCloseImageModal() {
     if (Date.now() < ignoreCloseUntilRef.current) return;
@@ -135,6 +345,9 @@ export default function Feedback() {
       return { ...m, index: nextIdx };
     });
   }
+
+  
+
 
   /** ---------------------------
    *  Data state
@@ -424,7 +637,7 @@ export default function Feedback() {
     try {
       const res = await getSignedUrl(imageId);
       const url = typeof res === "string" ? res: res?.url
-      
+
       if (url) urlCacheRef.current.set(key, url);
       return url || null;
     } catch (e) {
@@ -767,9 +980,33 @@ export default function Feedback() {
     }));
   }
 
-  function ImageViewer({ image, total, filename, modalImages }) {
+  function ImageViewer({ image, total, filename, modalImages, imageId }) {
     const shownName = filename || getFileNameFromSrc(image) || "Image";
     const [hover, setHover] = useState(false);
+
+    const containerRef = useRef(null);
+    const imgRef = useRef(null);
+    const [imageRect, setImageRect] = useState(null);
+
+    useEffect(() => {
+      if (!imageId) return;
+      // achtergrond prefetch (zelfde idee als AnnotationPage)
+      prefetchAnnotations([imageId]).catch(() => {});
+    }, [imageId]);
+
+    const recalcRect = () => {
+      if (!imgRef.current || !containerRef.current) return;
+      const rect = getImageDrawRect(imgRef.current, containerRef.current);
+      if (rect) setImageRect(rect);
+    };
+
+    useEffect(() => {
+      recalcRect();
+      window.addEventListener("resize", recalcRect);
+      return () => window.removeEventListener("resize", recalcRect);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [image]); // rect herberekenen als image wisselt
+
 
     return (
       <div style={{ width: "460px", textAlign: "center" }}>
@@ -789,23 +1026,37 @@ export default function Feedback() {
             border: "1px solid rgba(0,0,0,0.12)",
           }}
         >
-          {image ? (
-          <img
-            src={image}
+          <div
+            ref={containerRef}
             style={{
-              display: "block",
-              maxWidth: "100%",
-              maxHeight: "100%",
-              objectFit: "contain",
-              borderRadius: "0px",
+              position: "relative",
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
             }}
-            alt="feedback"
-            onError={(e) => {
-              console.log("IMG LOAD FAILED:", image);
-              console.log("browser error event:", e);
-            }}
-          />
-          ) : null}
+          >
+            {image ? (
+              <img
+                ref={imgRef}
+                src={image ?? null}     // <- geen ""
+                onLoad={recalcRect}
+                style={{
+                  display: "block",
+                  maxWidth: "100%",
+                  maxHeight: "100%",
+                  objectFit: "contain",
+                  borderRadius: "0px",
+                }}
+                alt=""
+                draggable={false}
+              />
+            ) : null}
+
+            <ReadOnlyOverlays imageId={imageId} imageRect={imageRect} />
+          </div>
+
 
           {hover && (
             <button
@@ -892,6 +1143,26 @@ export default function Feedback() {
     );
   }
 
+   // modal derived + refs/state for read-only overlays
+  const modalItem = imageModal.images?.[imageModal.index] ?? null;
+  const modalSrc = modalItem?.src ?? null;
+  const modalImageId = modalItem?.imageId ?? null;
+
+  const modalWrapRef = useRef(null);
+  const modalImgRef = useRef(null);
+  const [modalRect, setModalRect] = useState(null);
+
+  useEffect(() => {
+    if (!imageModal.open || !modalImageId) return;
+    prefetchAnnotations([modalImageId]).catch(() => {});
+  }, [imageModal.open, modalImageId]);
+
+  const recalcModalRect = () => {
+    if (!modalImgRef.current || !modalWrapRef.current) return;
+    const rect = getImageDrawRect(modalImgRef.current, modalWrapRef.current);
+    if (rect) setModalRect(rect);
+  };
+
   /** ---------------------------
    *  Render guards
    *  -------------------------- */
@@ -954,6 +1225,9 @@ export default function Feedback() {
       : hasAnnotatorDatasets && !hasReviewerDatasets
         ? "Received"
         : "Feedback";
+
+  
+ 
 
   /** ---------------------------
    *  Main render
@@ -1111,6 +1385,7 @@ export default function Feedback() {
                       total={r.requests.length}
                       filename={shown.filename}
                       modalImages={toModalImagesFromRequests(r.requests)}
+                      imageId={shown.imageId}
                     />
 
                     <div style={{ flex: 1 }}>
@@ -1323,6 +1598,7 @@ export default function Feedback() {
                       total={g.entries.length}
                       filename={shown.filename}
                       modalImages={toModalImagesFromEntries(g.entries)}
+                      imageId={shown.imageId}
                     />
 
                     <div style={{ flex: 1 }}>
@@ -1549,7 +1825,7 @@ export default function Feedback() {
         )}
 
       {/* Image modal */}
-      {imageModal &&
+      {imageModal.open &&
         createPortal(
           <div
             onMouseDown={(e) => {
@@ -1701,20 +1977,37 @@ export default function Feedback() {
                   boxSizing: "border-box",
                 }}
               >
-                {imageModal.images?.[imageModal.index]?.src ? ( 
-                  <img
-                    src={imageModal.images?.[imageModal.index]?.src}
-                    draggable={false}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "contain",
-                      userSelect: "none",
-                    }}
-                    alt="image"
-                  />
-                ) : null}
+                <div
+                  ref={modalWrapRef}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "60px 110px 40px 110px",
+                    boxSizing: "border-box",
+                    position: "relative",
+                  }}
+                >
+                  {modalSrc ? (
+                    <img
+                      ref={modalImgRef}
+                      src={modalSrc ?? null}   // <- geen ""
+                      onLoad={recalcModalRect}
+                      draggable={false}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
+                        userSelect: "none",
+                      }}
+                      alt=""
+                    />
+                  ) : null}
 
+                  <ReadOnlyOverlays imageId={modalImageId} imageRect={modalRect} />
+                </div>
               </div>
 
               {/* counter */}
