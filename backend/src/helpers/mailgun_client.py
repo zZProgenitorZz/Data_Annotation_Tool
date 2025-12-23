@@ -19,6 +19,8 @@ def send_email_via_mailgun(to_email: str, subject: str, text: str):
         "subject": subject,
         "text": text,
     }
+
+    print(url)
   
  
     response = requests.post(url, auth=auth, data=data)
