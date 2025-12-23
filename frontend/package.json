@@ -13,6 +13,7 @@
     "axios": "^1.12.2",
     "file-saver": "^2.0.5",
     "jszip": "^3.10.1",
+    "jzip": "^1.0.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.9.4",

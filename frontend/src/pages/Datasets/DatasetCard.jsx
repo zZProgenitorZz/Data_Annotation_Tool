@@ -495,30 +495,63 @@ const DatasetWithRef = ({ dataset, editMode, localDataRef, users }) => {
           <Row label="Dataset" name="name" truncate localData={localData} editMode={editMode} handleChange={handleChange} />
           <Row label="Status" name="status" localData={localData} editMode={editMode} handleChange={handleChange} />
           <Row label="Images" name="total_Images" type="number" localData={localData} editMode={editMode} handleChange={handleChange} />
-          <Row label="Completed Images" name="completed_Images" type="number" localData={localData} editMode={editMode} handleChange={handleChange} />
+          <Row label="Completed" name="completed_Images" type="number" localData={localData} editMode={editMode} handleChange={handleChange} />
 
           {!editMode && (
             <div className="flex justify-between items-center mt-[6px]">
-              {/* Linker knop naar images */}
-              <button
-                onClick={goToImages}
-                className="flex items-center gap-[4px] px-[10px] py-[4px] bg-[#66B8A6] text-white text-[14px] rounded-[8px] hover:bg-[#58a090] transition"
-              >
-                <img
-                  src="src/assets/gallery.png" // bijvoorbeeld een icoon
-                  alt="Images"
-                  className="w-[14px] h-[14px]"
-                />
-                Imagelist
-              </button>
 
-              {/* MIDDEN knop */}
-              <button
-                onClick={goToExport} // vervang met jouw eigen functie
-                className="px-[10px] py-[4px] bg-[#00D1B2] text-[14px] rounded-[8px] hover:bg-[#00A38D] transition"
-              >
-                Export
-              </button>
+{/* Linker knop naar images */}
+<button
+  onClick={goToImages}
+  className="h-[34px] px-[12px] inline-flex items-center gap-[6px] rounded-full border transition active:scale-[0.98]"
+  style={{
+    backgroundColor: "rgba(255,255,255,0.28)",
+    borderColor: "rgba(0,0,0,0.14)",
+    color: "rgba(0,0,0,0.78)",
+    cursor: "pointer",
+    transform: "translateY(0px)",
+  }}
+  onMouseEnter={(e) => {
+    e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.45)";
+    e.currentTarget.style.borderColor = "rgba(0,0,0,0.22)";
+    e.currentTarget.style.transform = "translateY(-1px)";
+  }}
+  onMouseLeave={(e) => {
+    e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.28)";
+    e.currentTarget.style.borderColor = "rgba(0,0,0,0.14)";
+    e.currentTarget.style.transform = "translateY(0px)";
+  }}
+>
+  Image List
+</button>
+
+{/* MIDDEN knop */}
+<button
+  onClick={goToExport}
+  className="h-[34px] px-[16px] inline-flex items-center justify-center rounded-full border transition active:scale-[0.98]"
+  style={{
+    backgroundColor: "rgba(255,255,255,0.28)",
+    borderColor: "rgba(0,0,0,0.14)",
+    color: "rgba(0,0,0,0.78)",
+    cursor: "pointer",
+    transform: "translateY(0px)",
+  }}
+  onMouseEnter={(e) => {
+    e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.45)";
+    e.currentTarget.style.borderColor = "rgba(0,0,0,0.22)";
+    e.currentTarget.style.transform = "translateY(-1px)";
+  }}
+  onMouseLeave={(e) => {
+    e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.28)";
+    e.currentTarget.style.borderColor = "rgba(0,0,0,0.14)";
+    e.currentTarget.style.transform = "translateY(0px)";
+  }}
+>
+  Export
+</button>
+
+
+
           
 
               {/*  Rechter 'Start' knop */}
