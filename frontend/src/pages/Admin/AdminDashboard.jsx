@@ -4,7 +4,6 @@ import { getAllDatasets } from "../../services/datasetService";
 import { getAllUsers } from "../../services/authService";
 import { getAllLogs } from "../../services/logService";
 
-
 export default function AdminDashboard() {
   const [stats, setStats] = useState({
     totalDatasets: 0,
@@ -13,63 +12,57 @@ export default function AdminDashboard() {
   });
 
   const [hoverCard, setHoverCard] = useState(null);
-  
-
 
   useEffect(() => {
     const fetchDashboardData = async () => {
-        try {
-            const [datasets, users, logs] = await Promise.all([
-                getAllDatasets(),
-                getAllUsers(),
-                getAllLogs(),
-            ]);
+      try {
+        const [datasets, users, logs] = await Promise.all([
+          getAllDatasets(),
+          getAllUsers(),
+          getAllLogs(),
+        ]);
 
-            //Map userId => name
-            const userMap = new Map(
-                users.map((u) => [
-                    u.id,
-                    u.username ,
-                ])
-            );
+        const userMap = new Map(users.map((u) => [u.id, u.username]));
 
-            const recent = logs
-            // sort new above
-            .sort(
-                (a, b) =>
-                    new Date(b.timestamp).getTime() -
-                    new Date(a.timestamp).getTime()
-            )
-            //amount of logs
-            .slice(0, 50)
-            .map((log) => ({
-                time: new Date(log.timestamp).toLocaleString(), // "9/9/2025, 10:34:00"
-                action: log.action,
-                entity: log.target ?? "",
-                user: userMap.get(log.userId) ?? "Unknown",
-            }));
+        const recent = (logs || [])
+          .sort(
+            (a, b) =>
+              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          )
+          .slice(0, 50)
+          .map((log) => ({
+            time: new Date(log.timestamp).toLocaleString(),
+            action: log.action,
+            entity: log.target ?? "",
+            user: userMap.get(log.userId) ?? "Unknown",
+          }));
 
-            setStats((prev) => ({
-                ...prev,
-                totalDatasets: datasets.length,
-                totalUsers: users.length,
-                recent,
-            }));
-        } catch (err) {
-            console.error("Failed to fetch dashboard data", err)
-        }
+        setStats({
+          totalDatasets: datasets?.length ?? 0,
+          totalUsers: users?.length ?? 0,
+          recent,
+        });
+      } catch (err) {
+        console.error("Failed to fetch dashboard data", err);
+      }
     };
+
     fetchDashboardData();
   }, []);
-
 
   const baseShadow = "0 4px 10px rgba(0,0,0,0.18)";
   const hoverShadow = "0 10px 24px rgba(0,0,0,0.28)";
   const navigate = useNavigate();
 
   return (
-    <div className="w-full h-full select-none">
-
+    <div
+      className="w-full select-none"
+      style={{
+        minHeight: "100vh",
+        paddingBottom: "40px",
+        boxSizing: "border-box",
+      }}
+    >
       {/* PAGE TITLE */}
       <h1
         className="italic mb-[30px]"
@@ -80,7 +73,6 @@ export default function AdminDashboard() {
 
       {/* TWO CARDS ROW (can wrap on smaller screens) */}
       <div className="flex flex-wrap gap-[40px]">
-
         {/* DATASETS CARD */}
         <div
           onClick={() => navigate("/admin/datasets")}
@@ -206,7 +198,6 @@ export default function AdminDashboard() {
           borderRadius: "12px",
         }}
       >
-
         {/* TABLE INNER */}
         <div
           className="overflow-hidden select-text"
@@ -233,28 +224,37 @@ export default function AdminDashboard() {
             <div className="w-[160px] truncate">Performed by</div>
           </div>
 
-          {/* TABLE ROWS */}
-          {stats.recent.map((row, index) => (
-            <div
-              key={index}
-              className="flex border-b border-[#D6D6D6]"
-              style={{
-                backgroundColor: "#F2F2F2",
-                height: "36px",
-                alignItems: "center",
-                paddingLeft: "20px",
-                fontSize: "15px",
-              }}
-            >
-              <div className="w-[160px] truncate">{row.time}</div>
-              <div className="w-[200px] truncate">{row.action}</div>
-              <div className="w-[200px] truncate">{row.entity}</div>
-              <div className="w-[160px] truncate">{row.user}</div>
-            </div>
-          ))}
-
+          {/* SCROLL BODY (only rows scroll) */}
+          <div
+            className="datasets-scroll"
+            style={{
+              maxHeight: "360px",
+              overflowY: "auto",
+              overflowX: "hidden",
+              backgroundColor: "#F2F2F2",
+            }}
+          >
+            {stats.recent.map((row, index) => (
+              <div
+                key={index}
+                className="flex border-b border-[#D6D6D6]"
+                style={{
+                  backgroundColor: "#F2F2F2",
+                  height: "36px",
+                  alignItems: "center",
+                  paddingLeft: "20px",
+                  fontSize: "15px",
+                }}
+              >
+                <div className="w-[160px] truncate">{row.time}</div>
+                <div className="w-[200px] truncate">{row.action}</div>
+                <div className="w-[200px] truncate">{row.entity}</div>
+                <div className="w-[160px] truncate">{row.user}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    </div>
+  );
 }

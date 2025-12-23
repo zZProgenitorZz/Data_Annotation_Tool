@@ -6,7 +6,6 @@ import { listImages, getSignedUrl, getGuestImages } from "../services/ImageServi
 import { getImageAnnotation } from "../services/annotationService";
 import { getAllLabels } from "../services/labelService";
 
-
 // Kleine helper om datasetnaam "veilig" te maken voor een mapnaam
 function slugify(name) {
   if (!name) return "dataset";
@@ -92,16 +91,6 @@ function toYoloBbox(ann) {
     return null;
   }
 
-  // // center + clamping
-  // const cx = clamp01(x + w / 2);
-  // const cy = clamp01(y + h / 2);
-  // const ww = clamp01(w);
-  // const hh = clamp01(h);
-
-  // if (ww <= 0 || hh <= 0) return null;
-
-  // return { cx, cy, w: ww, h: hh };
-  // Vervang je "center + clamping" stuk hiermee:
   const x1 = Math.max(0, x);
   const y1 = Math.max(0, y);
   const x2 = Math.min(1, x + w);
@@ -116,7 +105,6 @@ function toYoloBbox(ann) {
   const cy = y1 + hh / 2;
 
   return { cx, cy, w: ww, h: hh };
-
 }
 
 // Converteer base64 (guest) naar Uint8Array voor JSZip
@@ -161,14 +149,11 @@ async function drawYoloOnImageBlob(imageBlob, yoloLines, idToLabel = []) {
     ctx.strokeStyle = "red";
     ctx.strokeRect(x1, y1, ww, hh);
 
-    // HIER: label tekst i.p.v. cijfer
     const labelText = idToLabel?.[classIdx] ?? String(classIdx);
 
     ctx.font = `${Math.max(14, canvas.width * 0.018)}px Arial`;
     ctx.fillStyle = "red";
     ctx.fillText(labelText, x1 + 4, Math.max(0, y1 + 4));
-
-
   }
 
   const outBlob = await new Promise((resolve) =>
@@ -177,8 +162,6 @@ async function drawYoloOnImageBlob(imageBlob, yoloLines, idToLabel = []) {
 
   return outBlob;
 }
-
-
 
 const Export = ({ dataset, authType, onClose, onExported }) => {
   const [images, setImages] = useState([]);
@@ -287,9 +270,7 @@ const Export = ({ dataset, authType, onClose, onExported }) => {
   const orderedLabelNames = useMemo(() => {
     if (!labels || !labels.length) return [];
     return [...labels]
-      .sort((a, b) =>
-        (a.labelName || "").localeCompare(b.labelName || "")
-      )
+      .sort((a, b) => (a.labelName || "").localeCompare(b.labelName || ""))
       .map((l) => l.labelName);
   }, [labels]);
 
@@ -314,7 +295,6 @@ const Export = ({ dataset, authType, onClose, onExported }) => {
       const annFolder = rootFolder.folder("Annotations");
       const imagesAnnotatedFolder = rootFolder.folder("images_annotaties");
 
-
       // classes.txt voor YOLO
       if (orderedLabelNames.length > 0) {
         rootFolder.file("classes.txt", orderedLabelNames.join("\n"));
@@ -338,9 +318,8 @@ const Export = ({ dataset, authType, onClose, onExported }) => {
           console.warn("Failed to fetch annotation for image", imageId, err);
         }
 
-        const anns = annData && Array.isArray(annData.annotations)
-          ? annData.annotations
-          : [];
+        const anns =
+          annData && Array.isArray(annData.annotations) ? annData.annotations : [];
 
         const lines = [];
 
@@ -348,7 +327,6 @@ const Export = ({ dataset, authType, onClose, onExported }) => {
           const labelName = ann.label;
           const classId = labelMap[labelName];
 
-          // als label niet in de huidige lijst zit, skip
           if (classId === undefined) continue;
 
           const yoloBox = toYoloBbox(ann);
@@ -360,12 +338,10 @@ const Export = ({ dataset, authType, onClose, onExported }) => {
           );
         }
 
-        // .txt bestand met zelfde basename als image
         const base = fileName.replace(/\.[^/.]+$/, "");
         const txtName = `${base}.txt`;
         annFolder.file(txtName, lines.join("\n"));
 
-        // --- Image data in zip ---
         if (authType === "user") {
           try {
             const { url } = await getSignedUrl(imageId);
@@ -375,9 +351,12 @@ const Export = ({ dataset, authType, onClose, onExported }) => {
             } else {
               const blob = await res.blob();
               imagesFolder.file(fileName, blob);
-              // extra: annotated versie in images_annotaties/
               try {
-                const annotatedBlob = await drawYoloOnImageBlob(blob, lines, orderedLabelNames);
+                const annotatedBlob = await drawYoloOnImageBlob(
+                  blob,
+                  lines,
+                  orderedLabelNames
+                );
                 if (annotatedBlob) {
                   imagesAnnotatedFolder.file(fileName, annotatedBlob);
                 }
@@ -389,7 +368,6 @@ const Export = ({ dataset, authType, onClose, onExported }) => {
             console.warn("Error while downloading image", imageId, err);
           }
         } else {
-          // guest: base64 data zit al in img.data
           if (img.data) {
             try {
               const bytes = base64ToUint8Array(img.data);
@@ -399,7 +377,11 @@ const Export = ({ dataset, authType, onClose, onExported }) => {
                 fileName.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
               const imageBlob = new Blob([bytes], { type: mime });
 
-              const annotatedBlob = await drawYoloOnImageBlob(imageBlob, lines, orderedLabelNames);
+              const annotatedBlob = await drawYoloOnImageBlob(
+                imageBlob,
+                lines,
+                orderedLabelNames
+              );
               if (annotatedBlob) {
                 imagesAnnotatedFolder.file(fileName, annotatedBlob);
               }
@@ -428,12 +410,49 @@ const Export = ({ dataset, authType, onClose, onExported }) => {
 
   const isReady = !loadingMeta && images.length > 0 && labels.length > 0;
 
+  const pillBase = {
+    height: "34px",
+    padding: "0 16px",
+    borderRadius: "9999px",
+    border: "1px solid rgba(0,0,0,0.14)",
+    backgroundColor: "rgba(255,255,255,0.28)",
+    color: "rgba(0,0,0,0.78)",
+    fontWeight: 650,
+    cursor: "pointer",
+    transition: "background .15s, border-color .15s, transform .15s, opacity .15s",
+    transform: "translateY(0px)",
+    outline: "none",
+    boxShadow: "none",
+    appearance: "none",
+    WebkitAppearance: "none",
+  };
+
+  // hover blijft hetzelfde, maar de buttons gaan niet "stijgen" meer
+  const pillHoverOn = (el) => {
+    el.style.backgroundColor = "rgba(255,255,255,0.40)";
+    el.style.borderColor = "rgba(0,0,0,0.18)";
+    el.style.transform = "translateY(0px)";
+  };
+
+  const pillHoverOff = (el) => {
+    el.style.backgroundColor = "rgba(255,255,255,0.28)";
+    el.style.borderColor = "rgba(0,0,0,0.14)";
+    el.style.transform = "translateY(0px)";
+  };
+
+  const softCard = {
+    backgroundColor: "rgba(255,255,255,0.70)",
+    border: "1px solid rgba(0,0,0,0.10)",
+    borderRadius: "12px",
+    padding: "10px 12px",
+  };
+
   return (
     <div
       style={{
         position: "fixed",
         inset: 0,
-        backgroundColor: "rgba(0,0,0,0.4)",
+        backgroundColor: "rgba(0,0,0,0.52)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -449,54 +468,90 @@ const Export = ({ dataset, authType, onClose, onExported }) => {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "520px",
-          backgroundColor: "#FFFFFF",
+          width: "560px",
+          maxWidth: "calc(100vw - 28px)",
+          backgroundColor: "rgba(255,255,255,1)",
           borderRadius: "16px",
-          boxShadow: "0px 6px 20px rgba(0,0,0,0.3)",
-          paddingBottom: "20px",
+          boxShadow: "0px 10px 30px rgba(0,0,0,0.32)",
+          border: "1px solid #B3DCD7",
+          overflow: "hidden",
           position: "relative",
         }}
       >
-        {/* Close (X) */}
-        <button
-          onClick={() => !isExporting && onClose && onClose()}
+        <div
           style={{
-            position: "absolute",
-            top: "8px",
-            right: "10px",
-            background: "none",
-            border: "none",
-            fontSize: "20px",
-            fontWeight: 700,
-            cursor: isExporting ? "not-allowed" : "pointer",
-            color: "#555",
+            height: "50px",
+            backgroundColor: "rgba(143, 221, 212, 0.55)",
+            borderBottom: "1px solid rgba(0,0,0,0.08)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0 16px",
           }}
         >
-          ✕
-        </button>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <div
+              style={{
+                fontSize: "16px",
+                fontWeight: 800,
+                color: "rgba(0,0,0,0.78)",
+              }}
+            >
+              Export YOLO dataset
+            </div>
+            <div style={{ fontSize: "13px", color: "rgba(0,0,0,0.62)", marginTop: "1px" }}>
+              Dataset:{" "}
+              <span style={{ fontWeight: 750, color: "rgba(0,0,0,0.78)" }}>
+                {dataset?.name || `Dataset ${dataset?.id ?? ""}`}
+              </span>
+            </div>
+          </div>
 
-        {/* Titel */}
-        <div style={{ padding: "24px 24px 8px 24px" }}>
-          <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "4px" }}>
-            Export YOLO dataset
-          </div>
-          <div style={{ fontSize: "14px", color: "#555" }}>
-            Dataset:{" "}
-            <span style={{ fontWeight: 600 }}>
-              {dataset?.name || `Dataset ${dataset?.id ?? ""}`}
-            </span>
-          </div>
+          <button
+            onClick={() => !isExporting && onClose && onClose()}
+            disabled={isExporting}
+            style={{
+              ...pillBase,
+              width: "34px",
+              padding: "0px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: 900,
+              color: "rgba(0,0,0,0.70)",
+              opacity: isExporting ? 0.55 : 1,
+              cursor: isExporting ? "not-allowed" : "pointer",
+              backgroundColor: "rgba(255,255,255,0.45)",
+              borderColor: "rgba(0,0,0,0.12)",
+              transform: "translateY(0px)",
+            }}
+            onMouseEnter={(e) => {
+              if (e.currentTarget.disabled) return;
+              pillHoverOn(e.currentTarget);
+            }}
+            onMouseLeave={(e) => {
+              if (e.currentTarget.disabled) return;
+              pillHoverOff(e.currentTarget);
+            }}
+            onMouseDown={(e) => {
+              if (e.currentTarget.disabled) return;
+              e.currentTarget.style.transform = "translateY(0px)";
+            }}
+            aria-label="Close export"
+            title={isExporting ? "Export in progress" : "Close"}
+          >
+            ✕
+          </button>
         </div>
 
-        {/* Info / status blok */}
-        <div style={{ padding: "0 24px 8px 24px" }}>
+        <div style={{ padding: "16px" }}>
           {loadingMeta && (
             <div
               style={{
                 fontSize: "14px",
-                color: "#555",
+                color: "rgba(0,0,0,0.62)",
                 fontStyle: "italic",
-                marginBottom: "8px",
+                marginBottom: "10px",
               }}
             >
               Loading images and labels…
@@ -505,29 +560,60 @@ const Export = ({ dataset, authType, onClose, onExported }) => {
 
           {!loadingMeta && (
             <>
-              <div style={{ fontSize: "14px", marginBottom: "4px" }}>
-                <strong>Images:</strong> {images.length}
+              <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "12px" }}>
+                <div
+                  style={{
+                    height: "28px",
+                    padding: "0 12px",
+                    borderRadius: "9999px",
+                    border: "1px solid rgba(0,0,0,0.12)",
+                    backgroundColor: "rgba(255,255,255,0.55)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    fontSize: "13px",
+                    fontWeight: 750,
+                    color: "rgba(0,0,0,0.72)",
+                  }}
+                  title="Total active images"
+                >
+                  Images: {images.length}
+                </div>
+
+                <div
+                  style={{
+                    height: "28px",
+                    padding: "0 12px",
+                    borderRadius: "9999px",
+                    border: "1px solid rgba(0,0,0,0.12)",
+                    backgroundColor: "rgba(255,255,255,0.55)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    fontSize: "13px",
+                    fontWeight: 750,
+                    color: "rgba(0,0,0,0.72)",
+                  }}
+                  title="Total categories"
+                >
+                  Categories: {labels.length}
+                </div>
               </div>
-              <div style={{ fontSize: "14px", marginBottom: "8px" }}>
-                <strong>Categories:</strong> {labels.length}
-              </div>
-              <div
-                style={{
-                  fontSize: "13px",
-                  color: "#555",
-                  backgroundColor: "#F5F5F5",
-                  borderRadius: "8px",
-                  padding: "8px 10px",
-                  lineHeight: 1.5,
-                }}
-              >
-                Export structure:
-                <br />
-                • <code>{slugify(dataset?.name)} / images / [&lt;images&gt;]</code>
-                <br />
-                • <code>{slugify(dataset?.name)} / Annotations / [&lt;image_name&gt;.txt]</code>
-                <br />
-                • <code>{slugify(dataset?.name)} / classes.txt</code>
+
+              <div style={{ ...softCard, lineHeight: 1.55, color: "rgba(0,0,0,0.72)" }}>
+                <div style={{ fontWeight: 800, marginBottom: "6px", color: "rgba(0,0,0,0.78)" }}>
+                  Export structure
+                </div>
+                <div
+                  style={{
+                    fontFamily:
+                      "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                    fontSize: "12.5px",
+                  }}
+                >
+                  • {slugify(dataset?.name)} / images / [&lt;images&gt;]
+                  <br />• {slugify(dataset?.name)} / Annotations / [&lt;image_name&gt;.txt]
+                  <br />• {slugify(dataset?.name)} / classes.txt
+                  <br />• {slugify(dataset?.name)} / images_annotaties / [&lt;images&gt;]
+                </div>
               </div>
             </>
           )}
@@ -537,7 +623,8 @@ const Export = ({ dataset, authType, onClose, onExported }) => {
               style={{
                 marginTop: "10px",
                 fontSize: "13px",
-                color: "#333",
+                color: "rgba(0,0,0,0.72)",
+                fontWeight: 650,
               }}
             >
               Exporting {progress.current} / {progress.total} images…
@@ -550,7 +637,7 @@ const Export = ({ dataset, authType, onClose, onExported }) => {
                 marginTop: "10px",
                 fontSize: "13px",
                 color: "#047857",
-                fontWeight: 600,
+                fontWeight: 750,
               }}
             >
               Export completed. Your ZIP file should start downloading.
@@ -563,58 +650,104 @@ const Export = ({ dataset, authType, onClose, onExported }) => {
                 marginTop: "10px",
                 fontSize: "13px",
                 color: "#b91c1c",
-                fontWeight: 600,
+                fontWeight: 750,
               }}
             >
               {error}
             </div>
           )}
-        </div>
 
-        {/* Buttons onder */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            gap: "24px",
-            marginTop: "20px",
-          }}
-        >
-          <button
-            onClick={() => !isExporting && onClose && onClose()}
-            disabled={isExporting}
+          <div
             style={{
-              padding: "10px 26px",
-              borderRadius: "10px",
-              backgroundColor: "#E9E6E4",
-              border: "2px solid #D8D3D0",
-              fontWeight: 600,
-              cursor: isExporting ? "not-allowed" : "pointer",
-              opacity: isExporting ? 0.7 : 1,
+              display: "flex",
+              justifyContent: "center",
+              gap: "16px",
+              marginTop: "18px",
+              paddingTop: "12px",
+              borderTop: "1px solid rgba(0,0,0,0.08)",
             }}
-            {...buttonEffects}
           >
-            Cancel
-          </button>
+            <button
+              onClick={() => !isExporting && onClose && onClose()}
+              disabled={isExporting}
+              style={{
+                ...pillBase,
+                backgroundColor: "rgba(255,255,255,0.35)",
+                border: "1px solid rgba(0,0,0,0.12)",
+                color: "rgba(0,0,0,0.74)",
+                fontWeight: 750,
+                opacity: isExporting ? 0.55 : 1,
+                cursor: isExporting ? "not-allowed" : "pointer",
+                transform: "translateY(0px)",
+              }}
+              onMouseEnter={(e) => {
+                if (e.currentTarget.disabled) return;
+                pillHoverOn(e.currentTarget);
+              }}
+              onMouseLeave={(e) => {
+                if (e.currentTarget.disabled) return;
+                pillHoverOff(e.currentTarget);
+              }}
+              onMouseDown={(e) => {
+                if (e.currentTarget.disabled) return;
+                e.currentTarget.style.transform = "translateY(0px)";
+              }}
+              {...buttonEffects}
+            >
+              Cancel
+            </button>
 
-          <button
-            onClick={handleExport}
-            disabled={!isReady || isExporting}
-            style={{
-              padding: "10px 28px",
-              borderRadius: "10px",
-              backgroundColor:
-                !isReady || isExporting ? "#C7D2FE" : "#4F46E5",
-              border: "2px solid #4338CA",
-              color: "#FFF",
-              fontWeight: 700,
-              cursor: !isReady || isExporting ? "not-allowed" : "pointer",
-              opacity: !isReady || isExporting ? 0.8 : 1,
-            }}
-            {...buttonEffects}
-          >
-            {isExporting ? "Exporting…" : "Export"}
-          </button>
+            <button
+              onClick={handleExport}
+              disabled={!isReady || isExporting}
+              style={{
+                ...pillBase,
+                backgroundColor: "rgba(44, 191, 174, 0.95)",
+                border: "1px solid rgba(0,0,0,0.14)",
+                color: "rgba(0,0,0,0.74)",
+                fontWeight: 750,
+                opacity: !isReady || isExporting ? 0.55 : 1,
+                cursor: !isReady || isExporting ? "not-allowed" : "pointer",
+                transform: "translateY(0px)",
+              }}
+              onMouseEnter={(e) => {
+                if (e.currentTarget.disabled) return;
+                e.currentTarget.style.filter = "brightness(0.95)";
+                e.currentTarget.style.transform = "translateY(0px)";
+              }}
+              onMouseLeave={(e) => {
+                if (e.currentTarget.disabled) return;
+                e.currentTarget.style.filter = "brightness(1)";
+                e.currentTarget.style.transform = "translateY(0px)";
+              }}
+              onMouseDown={(e) => {
+                if (e.currentTarget.disabled) return;
+                e.currentTarget.style.filter = "brightness(0.90)";
+                e.currentTarget.style.transform = "translateY(0px)";
+              }}
+              onMouseUp={(e) => {
+                if (e.currentTarget.disabled) return;
+                e.currentTarget.style.filter = "brightness(0.95)";
+                e.currentTarget.style.transform = "translateY(0px)";
+              }}
+            >
+              {isExporting ? "Exporting…" : "Export"}
+            </button>
+          </div>
+
+          {!loadingMeta && labels.length === 0 && (
+            <div
+              style={{
+                marginTop: "10px",
+                fontSize: "13px",
+                color: "rgba(0,0,0,0.62)",
+                fontStyle: "italic",
+                textAlign: "center",
+              }}
+            >
+              No labels found for this dataset.
+            </div>
+          )}
         </div>
       </div>
     </div>
