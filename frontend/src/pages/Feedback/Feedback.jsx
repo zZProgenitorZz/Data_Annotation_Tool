@@ -88,7 +88,7 @@ async function runPool(items, limit, worker) {
 function ReadOnlyOverlays({ imageId, imageRect }) {
   const [apiShapes, setApiShapes] = useState(null);
 
-  // ✅ hook vult jouw state (hij returnt geen data)
+  //  hook vult jouw state (hij returnt geen data)
   useImageAnnotations({
     activeImageId: imageId,
     setShapesFromApi: setApiShapes,
@@ -96,7 +96,7 @@ function ReadOnlyOverlays({ imageId, imageRect }) {
 
   if (!imageId || !imageRect || !apiShapes) return null;
 
-  // ✅ probeer meerdere mogelijke shapes-keys (verschilt per backend)
+  //  probeer meerdere mogelijke shapes-keys (verschilt per backend)
   const data = apiShapes || {};
   if (!imageId || !imageRect) return null;
 
@@ -545,17 +545,28 @@ export default function Feedback() {
         }
 
         // resolve filenames (listImages) only for datasets that actually have feedback remarks
+        const isTrue = (v) => v === true || v === "true" || v === 1 || v === "1";
+
         const fileNameMap = new Map(fileNameMapRef.current); // keep old
+        const activeMap = new Map(); // key: `${datasetId}:${imageId}` -> boolean
+
         await runPool(Array.from(datasetsNeedingImageNames), 4, async (datasetId) => {
           try {
             const res = await listImages(datasetId);
             const list = Array.isArray(res) ? res : res?.items || res?.images || res?.data || [];
+
             for (const img of list || []) {
               const imgId = toId(img?.id);
               if (!imgId) continue;
+
+              const key = `${datasetId}:${imgId}`;
+
+              const active = isTrue(img?.is_active ?? img?.isActive);
+              activeMap.set(key, active);
+
               const fn = safeStr(img?.fileName || img?.filename || img?.name || "");
               if (!fn) continue;
-              fileNameMap.set(`${datasetId}:${imgId}`, fn);
+              fileNameMap.set(key, fn);
             }
           } catch (e) {
             // optional
@@ -568,13 +579,22 @@ export default function Feedback() {
           return (items || []).map((it) => {
             const fn = fileNameMap.get(`${it.datasetId}:${it.imageId}`) || it.filename || `image_${it.imageId}`;
             return { ...it, filename: fn };
-          });
+          })
+          .filter((it) => activeMap.get(`${it.datasetId}:${it.imageId}`) === true);
         }
 
         const openRows = [];
         for (const [datasetId, reqs] of openMap.entries()) {
           const meta = dsMeta.get(String(datasetId));
           if (!meta) continue;
+
+            const filteredReqs = applyFilenames(reqs).sort((a, b) =>
+              String(a.createdAt || "").localeCompare(String(b.createdAt || ""))
+            );
+
+            // als alles weg-filtert (is_active), dataset rij ook niet tonen
+            if (filteredReqs.length === 0) continue;
+
           openRows.push({
             id: String(datasetId),
             datasetId: String(datasetId),
@@ -593,6 +613,13 @@ export default function Feedback() {
         for (const [datasetId, entries] of answeredMap.entries()) {
           const meta = dsMeta.get(String(datasetId));
           if (!meta) continue;
+
+           const filteredEntries = applyFilenames(entries).sort((a, b) =>
+            String(a.createdAt || "").localeCompare(String(b.createdAt || ""))
+          );
+
+          // als alles weg-filtert (is_active), dataset rij ook niet tonen
+          if (filteredEntries.length === 0) continue;
 
           feedbackGroups.push({
             datasetId: String(datasetId),
@@ -1424,7 +1451,7 @@ export default function Feedback() {
                           disabled={!canReply}
                           className="datasets-scroll"
                           style={{
-                            width: "100%",
+                            width: "93%",
                             minHeight: "100px",
                             maxHeight: "160px",
                             borderRadius: "10px",
@@ -1824,176 +1851,143 @@ export default function Feedback() {
           document.body
         )}
 
+     
       {/* Image modal */}
       {imageModal.open &&
         createPortal(
           <div
-            onMouseDown={(e) => {
+            onPointerDown={(e) => {
               if (e.target !== e.currentTarget) return;
               guardedCloseImageModal();
             }}
             style={{
               position: "fixed",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
+              inset: 0,
               width: "100vw",
               height: "100vh",
-              backgroundColor: "rgba(0,0,0,0.78)",
+              padding: "12px",
+              boxSizing: "border-box",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              zIndex: 9999,
-              padding: "12px",
-              boxSizing: "border-box",
+              background:
+                "radial-gradient(1200px 700px at 50% 35%, rgba(0,0,0,0.68), rgba(0,0,0,0.88))",
+              zIndex: 9999999999999,
             }}
           >
             <div
+              onPointerDown={(e) => e.stopPropagation()}
               style={{
-                width: "min(1200px, 96vw)",
-                height: "min(760px, 92vh)",
-                backgroundColor: "#111",
-                borderRadius: "18px",
-                overflow: "hidden",
-                boxShadow: "0 8px 30px rgba(0,0,0,0.40)",
                 position: "relative",
+                width: "min(1280px, 96vw)",
+                height: "min(820px, 92vh)",
+                borderRadius: "22px",
+                overflow: "hidden",
+                background:
+                    "linear-gradient(to bottom, rgba(0,0,0,0.60), rgba(0,0,0,0.06))",
+                border: "1px solid rgba(255,255,255,0.10)",
+                boxShadow: "0 18px 55px rgba(0,0,0,0.55)",
+                backdropFilter: "blur(10px)",
               }}
             >
-              {/* filename */}
+              {/* Top bar */}
               <div
                 style={{
                   position: "absolute",
-                  left: "14px",
-                  top: "12px",
-                  padding: "8px 12px",
-                  borderRadius: "12px",
-                  backgroundColor: "rgba(255,255,255,0.15)",
-                  color: "#fff",
-                  fontWeight: 800,
-                  fontSize: "14px",
-                  zIndex: 5,
-                  maxWidth: "70%",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  height: "60px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  padding: "10px 12px",
+                  boxSizing: "border-box",
+                  // background:
+                  //   "linear-gradient(to bottom, rgba(0,0,0,0.60), rgba(0,0,0,0.06))",
+                  zIndex: 60,
                 }}
               >
-                {imageModal.images?.[imageModal.index]?.filename || ""}
+                <div
+                  title={imageModal.images?.[imageModal.index]?.filename || ""}
+                  style={{
+                    maxWidth: "calc(100% - 70px)",
+                    padding: "10px 12px",
+                    borderRadius: "14px",
+                    backgroundColor: "rgba(255,255,255,0.12)",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    color: "#fff",
+                    fontWeight: 800,
+                    fontSize: "14px",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    userSelect: "none",
+                  }}
+                >
+                  {imageModal.images?.[imageModal.index]?.filename || ""}
+                </div>
+
+                <div style={{ flex: 1 }} />
+
+                {/* close button */}
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    guardedCloseImageModal();
+                  }}
+                  style={{
+                    width: "44px",
+                    height: "44px",
+                    borderRadius: "14px",
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    backgroundColor: "rgba(0,0,0,0.26)",
+                    color: "#fff",
+                    cursor: "pointer",
+                    fontSize: "24px",
+                    fontWeight: 900,
+                    lineHeight: "24px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    userSelect: "none",
+                    boxShadow: "0 10px 18px rgba(0,0,0,0.35)",
+                  }}
+                >
+                  ✕
+                </button>
               </div>
 
-              {/* close */}
-              <button
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  closeImageModal();
-                }}
-                style={{
-                  position: "absolute",
-                  right: "14px",
-                  top: "12px",
-                  width: "46px",
-                  height: "46px",
-                  borderRadius: "14px",
-                  border: "1px solid rgba(255,255,255,0.18)",
-                  backgroundColor: "rgba(0,0,0,0.25)",
-                  color: "#fff",
-                  fontSize: "22px",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                  zIndex: 5,
-                }}
-                aria-label="Close"
-              >
-                ✕
-              </button>
-
-              {/* prev */}
-              <button
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  prevModal();
-                }}
-                style={{
-                  position: "absolute",
-                  left: "18px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  width: "90px",
-                  height: "90px",
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  borderRadius: "22px",
-                  border: "1px solid rgba(255,255,255,0.18)",
-                  backgroundColor: "rgba(0,0,0,0.25)",
-                  cursor: "pointer",
-                  zIndex: 5,
-                }}
-                aria-label="Previous"
-              >
-                <img src={prevIcon} alt="Previous" style={{ width: "44px", userSelect: "none", pointerEvents: "none" }} />
-              </button>
-
-              {/* next */}
-              <button
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  nextModal();
-                }}
-                style={{
-                  position: "absolute",
-                  right: "18px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  width: "90px",
-                  height: "90px",
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  borderRadius: "22px",
-                  border: "1px solid rgba(255,255,255,0.18)",
-                  backgroundColor: "rgba(0,0,0,0.25)",
-                  cursor: "pointer",
-                  zIndex: 5,
-                }}
-                aria-label="Next"
-              >
-                <img src={nextIcon} alt="Next" style={{ width: "44px", userSelect: "none", pointerEvents: "none" }} />
-              </button>
-
-              {/* image */}
+              {/* Stage */}
               <div
                 style={{
-                  width: "100%",
-                  height: "100%",
+                  position: "absolute",
+                  inset: 0,
+                  padding: "60px 110px 40px 110px",
+                  boxSizing: "border-box",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  padding: "60px 110px 40px 110px",
-                  boxSizing: "border-box",
                 }}
               >
                 <div
                   ref={modalWrapRef}
                   style={{
+                    position: "relative",
                     width: "100%",
                     height: "100%",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    padding: "60px 110px 40px 110px",
-                    boxSizing: "border-box",
-                    position: "relative",
                   }}
                 >
                   {modalSrc ? (
                     <img
                       ref={modalImgRef}
-                      src={modalSrc ?? null}   // <- geen ""
+                      src={modalSrc ?? null} // <- geen ""
                       onLoad={recalcModalRect}
                       draggable={false}
                       style={{
@@ -2001,6 +1995,8 @@ export default function Feedback() {
                         height: "100%",
                         objectFit: "contain",
                         userSelect: "none",
+                        display: "block",
+                        filter: "drop-shadow(0 16px 40px rgba(0,0,0,0.45))",
                       }}
                       alt=""
                     />
@@ -2010,21 +2006,117 @@ export default function Feedback() {
                 </div>
               </div>
 
-              {/* counter */}
+              {/* Prev */}
+              <button
+                type="button"
+                aria-label="Previous"
+                disabled={(imageModal.images?.length || 0) <= 1}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if ((imageModal.images?.length || 0) <= 1) return;
+                  prevModal();
+                }}
+                style={{
+                  position: "absolute",
+                  left: "16px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  width: "56px",
+                  height: "92px",
+                  borderRadius: "18px",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  backgroundColor: "rgba(0,0,0,0.22)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: (imageModal.images?.length || 0) <= 1 ? "default" : "pointer",
+                  userSelect: "none",
+                  zIndex: 55,
+                  boxShadow: "0 12px 22px rgba(0,0,0,0.35)",
+                  opacity: (imageModal.images?.length || 0) <= 1 ? 0.45 : 1,
+                }}
+              >
+                <img
+                  src={prevIcon}
+                  style={{
+                    width: "40px",
+                    height: "40px",
+                    userSelect: "none",
+                    pointerEvents: "none",
+                    filter:
+                      "drop-shadow(0 10px 18px rgba(0,0,0,0.65)) drop-shadow(0 0 10px rgba(0,0,0,0.45))",
+                    opacity: 0.95,
+                  }}
+                  alt=""
+                />
+              </button>
+
+              {/* Next */}
+              <button
+                type="button"
+                aria-label="Next"
+                disabled={(imageModal.images?.length || 0) <= 1}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if ((imageModal.images?.length || 0) <= 1) return;
+                  nextModal();
+                }}
+                style={{
+                  position: "absolute",
+                  right: "16px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  width: "56px",
+                  height: "92px",
+                  borderRadius: "18px",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  backgroundColor: "rgba(0,0,0,0.22)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: (imageModal.images?.length || 0) <= 1 ? "default" : "pointer",
+                  userSelect: "none",
+                  zIndex: 55,
+                  boxShadow: "0 12px 22px rgba(0,0,0,0.35)",
+                  opacity: (imageModal.images?.length || 0) <= 1 ? 0.45 : 1,
+                }}
+              >
+                <img
+                  src={nextIcon}
+                  style={{
+                    width: "40px",
+                    height: "40px",
+                    userSelect: "none",
+                    pointerEvents: "none",
+                    filter:
+                      "drop-shadow(0 10px 18px rgba(0,0,0,0.65)) drop-shadow(0 0 10px rgba(0,0,0,0.45))",
+                    opacity: 0.95,
+                  }}
+                  alt=""
+                />
+              </button>
+
+              {/* Bottom counter */}
               <div
                 style={{
                   position: "absolute",
-                  bottom: "12px",
+                  bottom: "14px",
                   left: "50%",
                   transform: "translateX(-50%)",
-                  padding: "8px 12px",
-                  borderRadius: "12px",
-                  backgroundColor: "rgba(255,255,255,0.15)",
                   color: "#fff",
-                  fontWeight: 900,
                   fontSize: "14px",
-                  zIndex: 5,
+                  fontWeight: 900,
                   userSelect: "none",
+                  whiteSpace: "nowrap",
+                  backgroundColor: "rgba(255,255,255,0.12)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  padding: "8px 12px",
+                  borderRadius: "14px",
+                  backdropFilter: "blur(6px)",
+                  zIndex: 60,
+                  boxShadow: "0 10px 18px rgba(0,0,0,0.35)",
                 }}
               >
                 {imageModal.index + 1}/{imageModal.images?.length || 0}
@@ -2033,6 +2125,8 @@ export default function Feedback() {
           </div>,
           document.body
         )}
+
+
     </div>
   );
 }

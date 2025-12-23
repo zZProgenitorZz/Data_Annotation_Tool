@@ -310,7 +310,6 @@ export default function PendingApprovals() {
 
             // Build base info from dataset
             const dsObj = dsById.get(datasetId);
-            console.log(dsObj?.createdBy)
             const datasetName = safeStr(dsObj?.name || `Dataset ${datasetId}`);
             const owner = getUserNameByIdLocal(dsObj?.createdBy) || "Admin";
             const assigned = getAssignedNamesLocal(dsObj || {});
@@ -880,7 +879,7 @@ export default function PendingApprovals() {
             }}
           >
             <img
-              src={current?.src || ""}
+              src={current?.src ?? null}
               style={{
                 display: "block",
                 maxWidth: "100%",
@@ -1374,7 +1373,7 @@ export default function PendingApprovals() {
                                 }}
                               >
                                 <img
-                                  src={img.src || ""}
+                                  src={img.src ?? null}
                                   style={{
                                     width: "100%",
                                     height: "100%",
@@ -1656,7 +1655,7 @@ export default function PendingApprovals() {
       {imageModal &&
         createPortal(
           <div
-            onPointerDown={(e) => {
+            onMouseDown={(e) => {
               if (e.target !== e.currentTarget) return;
               guardedCloseImageModal();
             }}
@@ -1668,163 +1667,219 @@ export default function PendingApprovals() {
               bottom: 0,
               width: "100vw",
               height: "100vh",
-              backgroundColor: "rgba(0,0,0,0.78)",
-              zIndex: 9999999999999,
+              background:
+                "radial-gradient(1200px 700px at 50% 35%, rgba(0,0,0,0.68), rgba(0,0,0,0.88))",
               display: "flex",
-              justifyContent: "center",
               alignItems: "center",
+              justifyContent: "center",
+              zIndex: 9999,
+              padding: "12px",
+              boxSizing: "border-box",
             }}
           >
             <div
-              onPointerDown={(e) => e.stopPropagation()}
               style={{
+                width: "min(1280px, 96vw)",
+                height: "min(820px, 92vh)",
+                background:
+                    "linear-gradient(to bottom, rgba(0,0,0,0.60), rgba(0,0,0,0.06))",
+                borderRadius: "22px",
+                overflow: "hidden",
+                border: "1px solid rgba(255,255,255,0.10)",
+                boxShadow: "0 18px 55px rgba(0,0,0,0.55)",
                 position: "relative",
-                width: "96vw",
-                height: "92vh",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
+                backdropFilter: "blur(10px)",
               }}
             >
+              {/* filename */}
+              <div
+                style={{
+                  position: "absolute",
+                  left: "14px",
+                  top: "12px",
+                  padding: "10px 12px",
+                  borderRadius: "14px",
+                  backgroundColor: "rgba(255,255,255,0.12)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  color: "#fff",
+                  fontWeight: 800,
+                  fontSize: "14px",
+                  zIndex: 5,
+                  maxWidth: "70%",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  userSelect: "none",
+                }}
+              >
+                {imageModal.images?.[imageModal.index]?.filename || ""}
+              </div>
+
+              {/* close */}
               <button
-                type="button"
-                aria-label="Close"
-                onPointerDown={(e) => {
+                onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  guardedCloseImageModal();
+                  closeImageModal();
                 }}
                 style={{
                   position: "absolute",
-                  top: "-28px",
-                  right: "-28px",
-                  border: "none",
-                  background: "transparent",
+                  right: "12px",
+                  top: "8px",
+                  width: "44px",
+                  height: "44px",
+                  borderRadius: "14px",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  backgroundColor: "rgba(0,0,0,0.26)",
                   color: "#fff",
-                  cursor: "pointer",
-                  fontSize: "38px",
+                  fontSize: "24px",
                   fontWeight: 900,
-                  lineHeight: "38px",
-                  padding: 0,
+                  cursor: "pointer",
+                  zIndex: 5,
                   userSelect: "none",
-                  textShadow: "0 6px 16px rgba(0,0,0,0.6)",
-                  zIndex: 60,
+                  boxShadow: "0 10px 18px rgba(0,0,0,0.35)",
                 }}
+                aria-label="Close"
+                type="button"
               >
-                ×
+                ✕
               </button>
 
-              <div
-                onPointerDown={(e) => {
+              {/* prev */}
+              <button
+                onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   prevModal();
                 }}
                 style={{
                   position: "absolute",
-                  left: "18px",
+                  left: "16px",
                   top: "50%",
                   transform: "translateY(-50%)",
-                  width: "90px",
-                  height: "90px",
+                  width: "56px",
+                  height: "92px",
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "center",
+                  borderRadius: "18px",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  backgroundColor: "rgba(0,0,0,0.22)",
                   cursor: "pointer",
+                  zIndex: 5,
                   userSelect: "none",
-                  zIndex: 50,
                 }}
+                aria-label="Previous"
+                type="button"
               >
                 <img
-                  src={prevIcon}
-                  style={{
-                    width: "72px",
-                    height: "72px",
-                    userSelect: "none",
-                    pointerEvents: "none",
-                    filter:
-                      "drop-shadow(0 10px 18px rgba(0,0,0,0.75)) drop-shadow(0 0 10px rgba(0,0,0,0.55))",
-                    opacity: 1,
-                  }}
-                  alt=""
-                />
-              </div>
+                    src={prevIcon}
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      userSelect: "none",
+                      pointerEvents: "none",
+                      filter:
+                        "drop-shadow(0 10px 18px rgba(0,0,0,0.65)) drop-shadow(0 0 10px rgba(0,0,0,0.45))",
+                      opacity: 0.95,
+                    }}
+                    alt=""
+                  />
+              </button>
 
-              <div
-                onPointerDown={(e) => {
+              {/* next */}
+              <button
+                onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   nextModal();
                 }}
                 style={{
                   position: "absolute",
-                  right: "18px",
+                  right: "16px",
                   top: "50%",
                   transform: "translateY(-50%)",
-                  width: "90px",
-                  height: "90px",
+                  width: "56px",
+                  height: "92px",
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "center",
+                  borderRadius: "18px",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  backgroundColor: "rgba(0,0,0,0.22)",
                   cursor: "pointer",
+                  zIndex: 5,
                   userSelect: "none",
-                  zIndex: 50,
                 }}
+                aria-label="Next"
+                type="button"
               >
                 <img
                   src={nextIcon}
                   style={{
-                    width: "72px",
-                    height: "72px",
+                    width: "40px",
+                    height: "40px",
                     userSelect: "none",
                     pointerEvents: "none",
                     filter:
-                      "drop-shadow(0 10px 18px rgba(0,0,0,0.75)) drop-shadow(0 0 10px rgba(0,0,0,0.55))",
-                    opacity: 1,
+                      "drop-shadow(0 10px 18px rgba(0,0,0,0.65)) drop-shadow(0 0 10px rgba(0,0,0,0.45))",
+                    opacity: 0.95,
                   }}
                   alt=""
                 />
-              </div>
+              </button>
 
-              <img
-                src={imageModal.images?.[imageModal.index]?.src || ""}
-                draggable={false}
+              {/* image */}
+              <div
                 style={{
                   width: "100%",
                   height: "100%",
-                  objectFit: "contain",
-                  userSelect: "none",
-                  cursor: "default",
-                  display: "block",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "60px 110px 40px 110px",
+                  boxSizing: "border-box",
                 }}
-                alt=""
-              />
+              >
+                {imageModal.images?.[imageModal.index]?.src ? (
+                  <img
+                    src={imageModal.images?.[imageModal.index]?.src ?? null}
+                    draggable={false}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "contain",
+                      userSelect: "none",
+                    }}
+                    alt=""
+                  />
+                ) : null}
+              </div>
 
+              {/* counter */}
               <div
                 style={{
                   position: "absolute",
-                  bottom: "18px",
+                  bottom: "12px",
                   left: "50%",
                   transform: "translateX(-50%)",
-                  color: "#fff",
-                  fontSize: "18px",
-                  fontWeight: 700,
-                  userSelect: "none",
-                  textShadow: "0 6px 16px rgba(0,0,0,0.6)",
-                  whiteSpace: "nowrap",
-                  backgroundColor: "rgba(0,0,0,0.25)",
-                  padding: "6px 12px",
+                  padding: "8px 12px",
                   borderRadius: "12px",
-                  backdropFilter: "blur(2px)",
-                  zIndex: 55,
+                  backgroundColor: "rgba(255,255,255,0.15)",
+                  color: "#fff",
+                  fontWeight: 900,
+                  fontSize: "14px",
+                  zIndex: 5,
+                  userSelect: "none",
                 }}
               >
-                {imageModal.index + 1}/{imageModal.images.length}
+                {imageModal.index + 1}/{imageModal.images?.length || 0}
               </div>
             </div>
           </div>,
           document.body
         )}
+
     </div>
   );
 }

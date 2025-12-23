@@ -92,15 +92,30 @@ function toYoloBbox(ann) {
     return null;
   }
 
-  // center + clamping
-  const cx = clamp01(x + w / 2);
-  const cy = clamp01(y + h / 2);
-  const ww = clamp01(w);
-  const hh = clamp01(h);
+  // // center + clamping
+  // const cx = clamp01(x + w / 2);
+  // const ww = clamp01(w);
+  // const hh = clamp01(h);
+
+  // if (ww <= 0 || hh <= 0) return null;
+
+  // return { cx, cy, w: ww, h: hh };
+  // Vervang je "center + clamping" stuk hiermee:
+  const x1 = Math.max(0, x);
+  const y1 = Math.max(0, y);
+  const x2 = Math.min(1, x + w);
+  const y2 = Math.min(1, y + h);
+
+  const ww = x2 - x1;
+  const hh = y2 - y1;
 
   if (ww <= 0 || hh <= 0) return null;
 
+  const cx = x1 + ww / 2;
+  const cy = y1 + hh / 2;
+
   return { cx, cy, w: ww, h: hh };
+
 }
 
 // Converteer base64 (guest) naar Uint8Array voor JSZip
@@ -113,6 +128,56 @@ function base64ToUint8Array(base64) {
   }
   return bytes;
 }
+
+async function drawYoloOnImageBlob(imageBlob, yoloLines, idToLabel = []) {
+  const bmp = await createImageBitmap(imageBlob);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = bmp.width;
+  canvas.height = bmp.height;
+
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bmp, 0, 0);
+
+  for (const line of yoloLines) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length !== 5) continue;
+
+    const classIdx = parseInt(parts[0], 10);
+    const cx = Number(parts[1]);
+    const cy = Number(parts[2]);
+    const w = Number(parts[3]);
+    const h = Number(parts[4]);
+
+    if (![classIdx, cx, cy, w, h].every((v) => Number.isFinite(v))) continue;
+
+    const x1 = (cx - w / 2) * canvas.width;
+    const y1 = (cy - h / 2) * canvas.height;
+    const ww = w * canvas.width;
+    const hh = h * canvas.height;
+
+    ctx.lineWidth = Math.max(2, canvas.width * 0.002);
+    ctx.strokeStyle = "red";
+    ctx.strokeRect(x1, y1, ww, hh);
+
+    // HIER: label tekst i.p.v. cijfer
+    const labelText = idToLabel?.[classIdx] ?? String(classIdx);
+
+    ctx.font = `${Math.max(14, canvas.width * 0.018)}px Arial`;
+    ctx.fillStyle = "red";
+    ctx.fillText(labelText, x1 + 4, Math.max(0, y1 + 4));
+
+
+  }
+
+  const outBlob = await new Promise((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", 0.92)
+  );
+
+  return outBlob;
+}
+
+
 
 const Export = ({ dataset, authType, onClose, onExported }) => {
   const [images, setImages] = useState([]);
@@ -246,6 +311,8 @@ const Export = ({ dataset, authType, onClose, onExported }) => {
       const rootFolder = zip.folder(datasetFolderName);
       const imagesFolder = rootFolder.folder("images");
       const annFolder = rootFolder.folder("Annotations");
+      const imagesAnnotatedFolder = rootFolder.folder("images_annotaties");
+
 
       // classes.txt voor YOLO
       if (orderedLabelNames.length > 0) {
@@ -307,6 +374,15 @@ const Export = ({ dataset, authType, onClose, onExported }) => {
             } else {
               const blob = await res.blob();
               imagesFolder.file(fileName, blob);
+              // extra: annotated versie in images_annotaties/
+              try {
+                const annotatedBlob = await drawYoloOnImageBlob(blob, lines, orderedLabelNames);
+                if (annotatedBlob) {
+                  imagesAnnotatedFolder.file(fileName, annotatedBlob);
+                }
+              } catch (e) {
+                console.warn("Failed to render annotated image for", imageId, e);
+              }
             }
           } catch (err) {
             console.warn("Error while downloading image", imageId, err);
@@ -317,6 +393,15 @@ const Export = ({ dataset, authType, onClose, onExported }) => {
             try {
               const bytes = base64ToUint8Array(img.data);
               imagesFolder.file(fileName, bytes, { binary: true });
+
+              const mime =
+                fileName.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+              const imageBlob = new Blob([bytes], { type: mime });
+
+              const annotatedBlob = await drawYoloOnImageBlob(imageBlob, lines, orderedLabelNames);
+              if (annotatedBlob) {
+                imagesAnnotatedFolder.file(fileName, annotatedBlob);
+              }
             } catch (err) {
               console.warn("Error converting guest image data for", imageId, err);
             }
