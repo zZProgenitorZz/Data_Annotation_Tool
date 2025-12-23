@@ -94,6 +94,7 @@ function toYoloBbox(ann) {
 
   // // center + clamping
   // const cx = clamp01(x + w / 2);
+  // const cy = clamp01(y + h / 2);
   // const ww = clamp01(w);
   // const hh = clamp01(h);
 
