@@ -6,6 +6,8 @@ from backend.src.models.user import UserDto
 from backend.src.services.log_service import LogService
 from backend.src.repositories.Image_metadata_repo import ImageMetadataRepo
 from datetime import datetime, timezone
+from backend.src.services.remark_service import RemarkService
+from backend.src.models.remark import Remark
 
 
 class DatasetService:
@@ -14,6 +16,7 @@ class DatasetService:
         self.user_repo = UserRepo()
         self.log = LogService()
         self.image_repo = ImageMetadataRepo()
+        self.remark_ser = RemarkService()
         
   
 
@@ -174,6 +177,17 @@ class DatasetService:
             raise NotFoundError(f"Dataset with id {dataset_id} not found")
 
         username = current_user.username
+
+        remark = Remark(   
+        datasetId= dataset_id,
+        imageId= "",          # dataset-level
+        message= "The dataset is not needed",
+        status= False,        # pending
+        reply= "",
+        feedback= False,      # pending approvals view
+        )
+
+        await self.remark_ser.create_remark(remark)
         
         await self.log.log_action(
             user_id = current_user.id,

@@ -26,6 +26,8 @@ class ImageMetadataRepo:
     # Get image metadata by id
     async def get_image_metadata_by_id(self, image_metadata_id: str) -> ImageMetadata:
         image_metadata = await self.collection.find_one({"_id": PyObjectId(image_metadata_id)})
+        if not image_metadata:
+            return None
 
         return ImageMetadata(
             **image_metadata

@@ -16,6 +16,11 @@ import CreatePassword from "./pages/Login/CreatePassword.jsx";
 import CheckEmail from "./pages/Login/CheckEmail.jsx";
 import PasswordChanged from "./pages/Login/PasswordChanged.jsx";
 
+import FeedbackLayout from "./pages/Feedback/FeedbackLayout.jsx";
+import Feedback from "./pages/Feedback/Feedback.jsx";
+// import FeedbackRequest from "./pages/Annotation/components/FeedbackRequest.jsx";
+import PendingApprovals from "./pages/Feedback/PendingApprovals.jsx";
+
 function App() {
  
   return (
@@ -36,6 +41,11 @@ function App() {
           <Route path="/admin/datasets"element={<RequireAuth><AdminLayout><DatasetManagement /></AdminLayout></RequireAuth> }/>
           <Route path="/admin/users" element={<RequireAuth><AdminLayout><UserManagement /></AdminLayout></RequireAuth>}/>
           <Route path="/admin/settings"element={<RequireAuth><AdminLayout><AdminSettings /></AdminLayout></RequireAuth>}/>
+
+          <Route path="/feedback" element={<RequireAuth><FeedbackLayout> <Feedback/> </FeedbackLayout></RequireAuth>}/>
+
+          <Route path="/feedback/approvals" element={<RequireAuth><FeedbackLayout> <PendingApprovals/> </FeedbackLayout></RequireAuth>}/>
+
         </Routes>
       </BrowserRouter>
     </AuthProvider>

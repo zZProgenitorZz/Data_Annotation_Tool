@@ -69,12 +69,12 @@ const ImageDeletion = ({ imageId, onClose, onSubmit, authType}) => {
       }
 
       const remark = {
-        annotationId: "",
         imageId: imageId,
         datasetId: stored.id,
         message: finalReason,
         status: false,
         reply: "",
+        feedback: false,
       };
 
       // 1. remark opslaan

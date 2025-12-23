@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { createRemark } from "../../../services/remarkService";
 
-const FeedbackRequest = ({ annotationId, imageId, fileName, onClose, onSubmit }) => {
+const FeedbackRequest = ({ imageId, fileName, onClose, onSubmit }) => {
   const [remarks, setRemarks] = useState("");
 
   useEffect(() => {
@@ -42,12 +42,12 @@ const FeedbackRequest = ({ annotationId, imageId, fileName, onClose, onSubmit })
         }
   
         const remark = {
-          annotationId: annotationId,
           imageId: imageId,
           datasetId: stored.id,
           message: remarks,
           status: false,
           reply: "",
+          feedback: true,
         };
   
         // 1. remark opslaan

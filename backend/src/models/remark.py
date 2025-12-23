@@ -5,7 +5,6 @@ from datetime import datetime
 
 class Remark(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
-    annotationId: Optional[str] = None  # Bij welke annotatie deze feedback hoort
     imageId: Optional[str] = None
     datasetId: Optional[str] = None
     #from_user: Optional[str] = None      # Wie de feedback stuurt
@@ -13,6 +12,7 @@ class Remark(BaseModel):
     message: str                                # De feedback zelf
     status: bool = False                        # False = nog niet reviewed, True = reviewed
     reply: Optional[str] = None                 # Reactie van ontvanger/annotator
+    feedback: bool = False
 
     createdAt: Optional[datetime] = None
     updatedAt: Optional[datetime] = None
@@ -24,7 +24,6 @@ class Remark(BaseModel):
 
 class RemarkDTO(BaseModel):
     id: Optional[str] = None
-    annotationId: Optional[str] = None
     imageId: Optional[str] = None
     datasetId: Optional[str] = None
     #from_user: str
@@ -32,6 +31,7 @@ class RemarkDTO(BaseModel):
     message: Optional[str] = None
     status: bool = False
     reply: Optional[str] = None
+    feedback: bool = False
 
     createdAt: Optional[datetime] = None
     updatedAt: Optional[datetime] = None
