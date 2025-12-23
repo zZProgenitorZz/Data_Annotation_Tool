@@ -1,20 +1,17 @@
-import React, {useState, useEffect, useContext} from "react";
+import React, { useState, useEffect, useContext, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { listImages, softDeleteImage, hardDeleteImage } from "../../services/ImageService";
-import UploadImages from "../../components/ImageUploader.jsx"
+import { listImages } from "../../services/ImageService";
+import UploadImages from "../../components/ImageUploader.jsx";
 import Header from "../../components/Header.jsx";
 import { AuthContext } from "../../components/AuthContext.jsx";
 import { getImageAnnotation } from "../../services/annotationService.js";
-
-
-
 
 const ImageList = () => {
   const [imageList, setImageList] = useState([]);
   const [dataset, setDataset] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [annotations, setAnnotations] = useState({})
-  const {currentUser} = useContext(AuthContext)
+  const [annotations, setAnnotations] = useState({});
+  const { currentUser } = useContext(AuthContext);
 
   const navigate = useNavigate();
 
@@ -23,31 +20,25 @@ const ImageList = () => {
 
     const key = `selectedImage:${dataset.id}`;
     localStorage.setItem(key, imageId);
-
-    // naar AnnotationPage
     navigate("/annotation");
   };
 
-
-
   useEffect(() => {
-    try{
+    try {
       const stored = localStorage.getItem("selectedDataset");
       if (stored) setDataset(JSON.parse(stored));
     } catch (err) {
-      console.error("Bad selectedDataset in localStorage", e);
+      console.error("Bad selectedDataset in localStorage", err);
     } finally {
-      setLoading(false) // loading only for dataset fetch here
+      setLoading(false);
     }
   }, []);
 
-  // fetch images once dataset is known
   const fetchImages = async () => {
     if (!dataset) return;
     try {
       const result = await listImages(dataset.id);
-      
-      setImageList(result);
+      setImageList(result || []);
     } catch (err) {
       console.error("Failed to fetch images:", err);
     }
@@ -55,148 +46,306 @@ const ImageList = () => {
 
   const fetchAnnotations = async () => {
     if (!imageList || imageList.length === 0) return;
-    const allAnnotation = {}
+
+    const allAnnotation = {};
     for (const image of imageList) {
       try {
-       
         const result = await getImageAnnotation(image.id);
-        allAnnotation[image.id] = result
+        allAnnotation[image.id] = result;
       } catch (err) {
         console.error("Failed to fetch annotation for image", image.id, err);
       }
     }
-    setAnnotations(allAnnotation)
-    }
+    setAnnotations(allAnnotation);
+  };
 
-  // haal eenmalig op als dataset bekend is
   useEffect(() => {
     if (!dataset) return;
     fetchImages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataset]);
 
   useEffect(() => {
     if (!imageList) return;
     fetchAnnotations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageList]);
 
   const handleUploaded = async () => {
     await fetchImages();
-  }
+  };
 
+  const activeImages = useMemo(
+    () => (imageList || []).filter((img) => img?.is_active),
+    [imageList]
+  );
+  const activeCount = activeImages.length;
 
-    
+  const PAD_LEFT = 72;
+  const PAD_RIGHT = 48;
+  const RIGHT_COL_W = 220;
+
+  const TABLE_MAX_H = "calc(100vh - 200px)";
+
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-b from-[#44F3C9] to-[#3F7790]">
-      {/* Header */}
-      <Header title={dataset ? `List of ${dataset.name} Images` : "List of Images"} currentUser={currentUser}/>
-      
-      <div className ="flex flex-1 items-center justify-center mt-[1px]">
-        <UploadImages
-        datasetId = {dataset?.id}
-        onDone={handleUploaded}
-        type = {"file"}/>
-      </div>
-      
-      
+    <div className="h-screen flex flex-col bg-gradient-to-b from-[#44F3C9] to-[#3F7790] overflow-hidden">
+      <Header
+        title={dataset ? `List of ${dataset.name} Images` : "List of Images"}
+        currentUser={currentUser}
+      />
 
+      <style>{`
+        .aidx-upload-theme input[type="file"]{
+          font-size: 14px;
+          color: rgba(0,0,0,0.75);
+        }
+        .aidx-upload-theme input[type="file"]::file-selector-button{
+          height: 34px;
+          padding: 0 14px;
+          border-radius: 9999px;
+          border: 1px solid rgba(0,0,0,0.14);
+          background: rgba(255,255,255,0.4);
+          color: rgba(0,0,0,0.78);
+          font-weight: 600;
+          cursor: pointer;
+          transition: background .15s, border-color .15s, transform .15s;
+        }
+        .aidx-upload-theme input[type="file"]::file-selector-button:hover{
+          background: rgba(255,255,255,0.4);
+          border-color: rgba(0,0,0,0.22);
+          transform: translateY(-1px);
+        }
+        .aidx-upload-theme input[type="file"]::file-selector-button:active{
+          transform: translateY(0px);
+        }
+        .aidx-upload-theme button{
+          height: 34px;
+          padding: 0 14px;
+          border-radius: 9999px;
+          border: 1px solid rgba(0,0,0,0.14);
+          background: rgba(255,255,255,0.4);
+          color: rgba(0,0,0,0.78);
+          font-weight: 600;
+          cursor: pointer;
+          transition: background .15s, border-color .15s, transform .15s, opacity .15s;
+        }
+        .aidx-upload-theme button:hover{
+          background: rgba(255,255,255,0.4);
+          border-color: rgba(0,0,0,0.22);
+          transform: translateY(-1px);
+        }
+        .aidx-upload-theme button:active{
+          transform: translateY(0px);
+        }
+        .aidx-upload-theme button:disabled{
+          opacity: .45;
+          cursor: not-allowed;
+          transform: translateY(0px);
+        }
 
-      <div className="flex flex-1 items-center justify-center px-[10px] mt-[1px] mb-[12px]">
-        <div
-          className="rounded-[3px] flex flex-col relative overflow-hidden"
-          style={{
-            width: "min(95vw, 1500px)",
-            height: "calc(min(90vh, 860px) - 16px)",
-            backgroundColor: "#FFFFFF",
-            border: "1px solid rgba(0,0,0,0.10)",
-            boxShadow: "0px 1px 4px rgba(0,0,0,0.25)",
-          }}
-        >
-          
+        .aidx-row{ position: relative; }
+        .aidx-row::before{
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: rgba(63, 119, 144, 0);
+          transition: background .12s;
+          pointer-events: none;
+        }
+        .aidx-row:hover::before{
+          background: rgba(63, 119, 144, 0.14);
+        }
+
+        .aidx-table{
+          max-height: ${TABLE_MAX_H};
+        }
+        .aidx-table-body{
+          overflow-y: auto;
+          overflow-x: hidden;
+        }
+      `}</style>
+
+      <div className="flex-1 overflow-hidden px-[40px] pt-[24px] datasets-scroll">
+        <div className="flex items-center justify-center aidx-upload-theme">
+          <UploadImages datasetId={dataset?.id} onDone={handleUploaded} type={"file"} />
+        </div>
+
+        <div className="h-[16px]" />
+
+        <div className="flex justify-center">
           <div
+            className="aidx-table flex flex-col overflow-hidden"
             style={{
-              height: "30px",
-              backgroundColor: "#F3F3F3",
-              borderBottom: "1px solid rgba(0,0,0,0.10)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              position: "relative",
+              width: "min(95vw, 1500px)",
+              backgroundColor: "rgba(229, 249, 247, 0.9)",
+              border: "1px solid #B3DCD7",
+              borderRadius: "14px",
             }}
           >
-            <div className="flex w-full h-full">
-              {/* Linker helft */}
-              <div className="flex-1 flex items-center justify-center">
-                <span className="font-semibold text-black">Filenames</span>
+            <div
+              className="relative grid items-center flex-shrink-0"
+              style={{
+                height: "44px",
+                backgroundColor: "rgba(143, 221, 212, 0.55)",
+                borderBottom: "1px solid rgba(0,0,0,0.08)",
+                gridTemplateColumns: `minmax(0, 1fr) ${RIGHT_COL_W}px`,
+              }}
+            >
+              <div style={{ paddingLeft: `${PAD_LEFT}px` }}>
+                <span
+                  style={{
+                    fontWeight: 800,
+                    fontSize: "15px",
+                    color: "rgba(0,0,0,0.78)",
+                    cursor: "default",
+                    userSelect: "none",
+                  }}
+                >
+                  File names
+                </span>
               </div>
 
-              {/* Verticale scheidslijn */}
-              <div style={{ alignSelf:'stretch', width:'2px', background:'rgba(0,0,0,0.3)', margin:'0 8px' }} />
+              <div
+                style={{ paddingRight: `${PAD_RIGHT}px` }}
+                className="flex items-center justify-center"
+              >
+                <span
+                  style={{
+                    fontWeight: 800,
+                    fontSize: "15px",
+                    color: "rgba(0,0,0,0.78)",
+                    cursor: "default",
+                    userSelect: "none",
+                  }}
+                >
+                  Annotated
+                </span>
+              </div>
 
-
-              {/* Rechter helft */}
-              <div className="flex-1 flex items-center justify-center">
-                <span className="font-semibold text-black">Annotated</span>
+              <div
+                className="absolute left-1/2 -translate-x-1/2"
+                style={{ pointerEvents: "none" }}
+              >
+                <div
+                  className="h-[26px] px-[12px] inline-flex items-center rounded-full border"
+                  style={{
+                    backgroundColor: "rgba(255,255,255,0.22)",
+                    borderColor: "rgba(0,0,0,0.12)",
+                    color: "rgba(0,0,0,0.70)",
+                    fontSize: "15px",
+                    fontWeight: 700,
+                  }}
+                  title="Total active images"
+                >
+                  {loading ? "Total Images: ..." : `Total Images: ${activeCount}`}
+                </div>
               </div>
             </div>
 
-          </div>
-          
-          {/* Image List */}
-            <ul className="flex-1 overflow-auto divide-y divide-gray-200 list-none m-0 p-0">
-              {imageList
-              .filter((img) => img.is_active) // only active images
-              .map((img, idx) => {
-                const key = img.id ?? img._id ?? idx;
-                const fileName = img.fileName ?? img.originalFilename ?? "(no name)";
-                const annotation = annotations?.[img.id];
-                
-                const annotated = annotation?.annotations?.length > 0;
+            <div className="aidx-table-body flex-1 min-h-0">
+              <ul className="list-none" style={{ margin: 0, padding: 0 }}>
+                {activeImages.map((img, idx) => {
+                  const key = img.id ?? img._id ?? idx;
+                  const fileName = img.fileName ?? img.originalFilename ?? "(no name)";
+                  const annotation = annotations?.[img.id];
+                  const annotated = annotation?.annotations?.length > 0;
 
-                return (
-                  <li
-                    key={key}
-                    className="grid grid-cols-[minmax(0,1fr)_140px] items-center bg-white hover:bg-gray-50 transition-colors py-3"
-                  >
-                    {/* Filename cell */}
-                    {/* Filename cell */}
-                    <div className="px-4 min-w-0">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenAnnotationPage(img.id)}
-                        className="block w-full text-left truncate text-gray-900 hover:text-blue-600 hover:underline"
-                      >
-                        {fileName}
-                      </button>
-                    </div>
+                  return (
+                    <li
+                      key={key}
+                      className="aidx-row grid items-center w-full"
+                      style={{
+                        gridTemplateColumns: `minmax(0, 1fr) ${RIGHT_COL_W}px`,
+                        borderBottom: "1px solid rgba(0,0,0,0.06)",
+                        backgroundColor: "rgba(255,255,255,0.10)",
+                      }}
+                    >
+                      {/* change here: make the button fill the whole row height */}
+                      <div className="min-w-0" style={{ paddingLeft: `${PAD_LEFT}px` }}>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAnnotationPage(img.id)}
+                          className="block w-full text-left truncate transition"
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            outline: "none",
+                            boxShadow: "none",
+                            margin: "0px",
+                            appearance: "none",
+                            WebkitAppearance: "none",
 
+                            position: "relative",
+                            zIndex: 1,
 
-                    {/* Status indicator cell */}
-                    <div className="px-4 flex items-center justify-center">
-                      <span
+                            width: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            paddingTop: "14px",
+                            paddingBottom: "14px",
+
+                            color: "rgba(0,0,0,0.78)",
+                            fontSize: "15px",
+                            fontWeight: 650,
+                            cursor: "pointer",
+                            textDecoration: "none",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.color = "rgba(0,0,0,0.92)";
+                            e.currentTarget.style.textDecoration = "underline";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.color = "rgba(0,0,0,0.78)";
+                            e.currentTarget.style.textDecoration = "none";
+                          }}
+                          title={fileName}
+                          aria-label={`Open ${fileName}`}
+                        >
+                          {fileName}
+                        </button>
+                      </div>
+
+                      <div
+                        className="py-[14px] flex items-center justify-center"
                         style={{
-                          display: "inline-block",
-                          width: "14px",
-                          height: "14px",
-                          borderRadius: "9999px",
-                          backgroundColor: annotated ? "#22c55e" : "#d1d5db",
-                          border: `1px solid ${annotated ? "#16a34a" : "#6b7280"}`,
-                          verticalAlign: "middle",
+                          paddingRight: `${PAD_RIGHT}px`,
+                          position: "relative",
+                          zIndex: 1,
                         }}
-                        title={annotated ? "Annotated" : "Not annotated"}
-                        aria-label={annotated ? "Annotated" : "Not annotated"}
-                      />
-                    </div>
-                  </li>
+                      >
+                        <span
+                          style={{
+                            width: "12px",
+                            height: "12px",
+                            borderRadius: "9999px",
+                            backgroundColor: annotated ? "#22c55e" : "rgba(0,0,0,0.22)",
+                            border: "2px solid rgba(0,0,0,0.10)",
+                          }}
+                          title={annotated ? "Annotated" : "Not annotated"}
+                          aria-label={annotated ? "Annotated" : "Not annotated"}
+                        />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
 
-                );
-              })}
-            </ul>
+            <div
+              className="flex-shrink-0"
+              style={{
+                height: "10px",
+                backgroundColor: "rgba(179, 220, 215, 0.22)",
+                borderTop: "1px solid rgba(0,0,0,0.05)",
+              }}
+            />
+          </div>
         </div>
+
+        <div className="h-[24px]" />
       </div>
     </div>
-    )
-}
-
-
+  );
+};
 
 export default ImageList;
